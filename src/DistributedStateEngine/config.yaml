@@ -1,0 +1,5 @@
+﻿ThisNode: 
+  Port: 5561
+OtherNodes:
+  - localhost:5562
+  - localhost:5563
