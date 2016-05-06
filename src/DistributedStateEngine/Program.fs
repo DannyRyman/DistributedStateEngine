@@ -1,4 +1,5 @@
 ﻿open System
+open System.Text
 open fszmq
 open fszmq.Context
 open fszmq.Socket
@@ -20,14 +21,18 @@ let main argv =
         for otherNode in config.OtherNodes do     
             printfn "subscribing to %s" otherNode   
             Socket.connect subscriber ("tcp://" + otherNode)
-
-        Socket.subscribe subscriber [| ""B |]
+        
+        Socket.subscribe subscriber [| "ALL"B |]
+        Socket.subscribe subscriber [| Encoding.ASCII.GetBytes(config.ThisNode.Port.ToString()) |]
 
         printfn "listening for broadcasts..."
 
         let rec loop() =
-            let msg = Socket.recv subscriber
-            printfn "message received"
+            // ignore the topic header
+            Socket.recv subscriber |> ignore 
+
+            let msg = Socket.recv subscriber |> Encoding.ASCII.GetString
+            printfn "received: %s" msg
             loop()
         loop()
     }
@@ -43,10 +48,24 @@ let main argv =
     printfn "creating publisher for port number: %i" config.ThisNode.Port
     Socket.bind publisher ("tcp://*:" + config.ThisNode.Port.ToString())
     
+    let unicastMessage () =
+        printfn "Enter the destination node name"
+        let destinationNodeName = Console.ReadLine()
+        publisher <~| Encoding.ASCII.GetBytes(destinationNodeName)
+                  <<| "Foo"B
+
+    let broadcastMessage () =
+        printfn "attempting broadcast"
+        publisher <~| "ALL"B
+                  <<| "Bar"B
+
     let rec loop() =        
-        printfn "Press a key to send a message"
-        Console.ReadLine() |> ignore
-        "Rhubarb"B |> Socket.send publisher
+        printfn "(u)nicast or (b)roadcast"
+        let unicastOrBroadcast = Console.ReadLine()
+        match unicastOrBroadcast with 
+            | "u" -> unicastMessage()
+            | "b" -> broadcastMessage()
+            | _ -> printfn "invalid value, try again"
         loop()
     loop()    
     
