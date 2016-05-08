@@ -5,8 +5,9 @@ open fszmq.Context
 open fszmq.Socket
 open System.Threading
 open FSharp.Configuration
+open Communication
 
-type Config = YamlConfig<"config.yaml">
+//type Config = YamlConfig<"config.yaml">
 
 [<EntryPoint>]
 let main argv =        
@@ -40,33 +41,20 @@ let main argv =
     use subscriberContext = new Context()
     Async.Start (broadcastSubscriber subscriberContext)
 
-
-    // publisher
-    use publisherContext = new Context()
-    use publisher = Context.pub publisherContext
-    Socket.setOption publisher (ZMQ.SNDHWM,1100000)
-    printfn "creating publisher for port number: %i" config.ThisNode.Port
-    Socket.bind publisher ("tcp://*:" + config.ThisNode.Port.ToString())
-    
-    let unicastMessage () =
-        printfn "Enter the destination node name"
-        let destinationNodeName = Console.ReadLine()
-        publisher <~| Encoding.ASCII.GetBytes(destinationNodeName)
-                  <<| "Foo"B
-
-    let broadcastMessage () =
-        printfn "attempting broadcast"
-        publisher <~| "ALL"B
-                  <<| "Bar"B
+    let getDestinationNode () = 
+        printfn "Enter the destination node:"
+        Console.ReadLine()
 
     let rec loop() =        
         printfn "(u)nicast or (b)roadcast"
         let unicastOrBroadcast = Console.ReadLine()
+        printfn "Enter the message:"
+        let msg = Console.ReadLine()
         match unicastOrBroadcast with 
-            | "u" -> unicastMessage()
-            | "b" -> broadcastMessage()
+            | "u" -> unicast (getDestinationNode()) msg
+            | "b" -> broadcast msg
             | _ -> printfn "invalid value, try again"
         loop()
-    loop()    
-    
+    loop()
+
     0 // return an integer exit code

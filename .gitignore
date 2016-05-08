@@ -3,7 +3,7 @@
 
 .build
 MultiNodeDevSetup
-
+.nuget/
 
 # User-specific files
 *.suo
