@@ -9,11 +9,8 @@ open Configuration
 open RaftImplementation
 
 [<EntryPoint>]
-let main argv =
-    printfn "libzmq version: %A" ZMQ.version    
-    
-    Async.Start init
-
-    Console.ReadLine() |> ignore
-
-    0 // return an integer exit code
+let main argv = 
+  printfn "libzmq version: %A" ZMQ.version
+  Async.Start init
+  Console.ReadLine() |> ignore
+  0 // return an integer exit code
