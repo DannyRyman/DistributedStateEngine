@@ -9,8 +9,7 @@ type private RaftNotification =
   | ElectionTimeout
   | RpcIn of RpcIn
 
-let private mailbox = 
-  new MailboxProcessor<RaftNotification>(fun inbox -> 
+let private raftState (inbox:MailboxProcessor<RaftNotification>) =
   let receiveOrTimeout() = 
     async { 
       // todo randomise the timeout
@@ -27,7 +26,7 @@ let private mailbox =
       | ElectionTimeout -> 
         log.Information "Election timeout received. Transitioning from follower -> candidate"
         return! candidate()
-      | RpcIn rpcIn -> log.Information "todo - implement rpc in (follower)"
+      | RpcIn _ -> log.Information "todo - implement rpc in (follower)"
       return! follower()
     }
   
@@ -38,10 +37,13 @@ let private mailbox =
       | ElectionTimeout -> 
         log.Information "todo - implement election timeout (candidate)"
         return! candidate()
-      | RpcIn rpcIn -> log.Information "todo - implement rpc in (candidate)"
+      | RpcIn _ -> log.Information "todo - implement rpc in (candidate)"
       return! candidate()
     }
-  
-  follower())
+ 
+  follower()
+
+let private mailbox = 
+  new MailboxProcessor<RaftNotification>(raftState)
 
 let init = async { mailbox.Start() }

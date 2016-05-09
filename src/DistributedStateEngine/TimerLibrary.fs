@@ -11,4 +11,3 @@ let DoPeriodicWork (f : unit -> Async<unit>) (interval : int) (token : Cancellat
       do! f()
       do! Task.Delay(interval, token) |> AwaitTaskVoid
   }
-

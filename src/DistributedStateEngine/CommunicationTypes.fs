@@ -3,26 +3,26 @@
 open System
 
 type AppendEntriesOut = 
-  { term : uint64
-    leaderId : string
-    prevLogIndex : uint64
-    prevLogTerm : uint64
-    entries : string []
-    leaderCommit : uint64 }
+  { Term : uint64
+    LeaderId : string
+    PrevLogIndex : uint64
+    PrevLogTerm : uint64
+    Entries : string []
+    LeaderCommit : uint64 }
 
 type AppendEntriesIn = 
-  { term : uint64
-    success : bool }
+  { Term : uint64
+    Success : bool }
 
 type RequestVoteOut = 
-  { term : uint64
-    candidateId : string
-    lastLogIndex : uint64
-    lastLogTerm : uint64 }
+  { Term : uint64
+    CandidateId : string
+    LastLogIndex : uint64
+    LastLogTerm : uint64 }
 
 type RequestVoteIn = 
-  { term : uint64
-    voteGranted : bool }
+  { Term : uint64
+    VoteGranted : bool }
 
 type RpcIn = 
   | AppendEntries of AppendEntriesIn
