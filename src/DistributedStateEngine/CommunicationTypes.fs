@@ -9,6 +9,6 @@
 
     type RequestVoteIn = { term:uint64; voteGranted:bool }
 
-    type RpcResponse =
+    type RpcIn =
         | AppendEntries of AppendEntriesIn
         | RequestVote of RequestVoteIn

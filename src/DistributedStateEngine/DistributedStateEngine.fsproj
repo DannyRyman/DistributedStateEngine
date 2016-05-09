@@ -69,7 +69,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Compile Include="Configuration.fs" />
+    <Compile Include="TimerLibrary.fs" />
+    <Compile Include="CommunicationTypes.fs" />
     <Compile Include="Communication.fs" />
+    <Compile Include="RaftImplementation.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
