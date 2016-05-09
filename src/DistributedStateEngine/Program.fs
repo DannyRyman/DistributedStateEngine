@@ -8,35 +8,20 @@ open Communication
 open Configuration
 
 [<EntryPoint>]
-let main argv =        
-    
-
+let main argv =
     printfn "libzmq version: %A" ZMQ.version    
-
-    let broadcastSubscriber context = async {
-        use subscriber = Context.sub context
-
-        for otherNode in config.OtherNodes do     
-            printfn "subscribing to %s" otherNode   
-            Socket.connect subscriber ("tcp://" + otherNode)
-        
-        Socket.subscribe subscriber [| "ALL"B |]
-        Socket.subscribe subscriber [| Encoding.ASCII.GetBytes(config.ThisNode.Port.ToString()) |]
-
-        printfn "listening for broadcasts..."
-
-        let rec loop() =
-            // ignore the topic header
-            Socket.recv subscriber |> ignore 
-
-            let msg = Socket.recv subscriber |> Encoding.ASCII.GetString
-            printfn "received: %s" msg
-            loop()
-        loop()
-    }
     
-    use subscriberContext = new Context()
-    Async.Start (broadcastSubscriber subscriberContext)
+    let mailbox = new MailboxProcessor<string>(fun inbox ->
+        let rec loop count =
+            async { printfn "Message count = %d. Waiting for next message." count
+                    let! msg = inbox.Receive()
+                    printfn "Message received. %s" msg
+                    return! loop( count + 1) }
+        loop 0)
+
+    mailbox.Start()
+
+    Communication.setupRemoteSubscriptions mailbox
 
     let getDestinationNode () = 
         printfn "Enter the destination node:"
