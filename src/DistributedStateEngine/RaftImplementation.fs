@@ -3,11 +3,11 @@
     open CommunicationTypes
     open TimerLibrary
 
-    type RaftNotification =
+    type private RaftNotification =
         | ElectionTimeout 
         | RpcIn of RpcIn
 
-    let mailbox = new MailboxProcessor<RaftNotification>(fun inbox ->
+    let private mailbox = new MailboxProcessor<RaftNotification>(fun inbox ->
         let rec follower () =
             async { 
                 let! notification = inbox.Receive()
@@ -18,7 +18,7 @@
             }
         follower ())    
 
-    let electionTimeout () =         
+    let private electionTimeout () =         
         async {
             mailbox.Post ElectionTimeout
         }
