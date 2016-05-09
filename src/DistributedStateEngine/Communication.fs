@@ -2,16 +2,12 @@
 // http://zguide.zeromq.org/page:all
 
 module internal Communication
+open Configuration
 open FSharp.Configuration
 open System.Text
 open System.Threading
 open fszmq
 open fszmq.Socket
-
-type Config = YamlConfig<"config.yaml">
-
-let config = new Config()
-config.Load("config.yaml")
 
 let publisherContext = new Context()
 let publisher = Context.pub publisherContext

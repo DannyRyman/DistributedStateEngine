@@ -68,6 +68,7 @@
     <None Include="config.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <Compile Include="Configuration.fs" />
     <Compile Include="Communication.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

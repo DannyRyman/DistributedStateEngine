@@ -4,15 +4,12 @@ open fszmq
 open fszmq.Context
 open fszmq.Socket
 open System.Threading
-open FSharp.Configuration
 open Communication
-
-//type Config = YamlConfig<"config.yaml">
+open Configuration
 
 [<EntryPoint>]
 let main argv =        
-    let config = new Config()
-    config.Load("config.yaml")
+    
 
     printfn "libzmq version: %A" ZMQ.version    
 
