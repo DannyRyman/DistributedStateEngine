@@ -2,6 +2,7 @@
     open System.Threading
     open CommunicationTypes
     open TimerLibrary
+    open Logging
 
     type private RaftNotification =
         | ElectionTimeout 
@@ -12,8 +13,8 @@
             async { 
                 let! notification = inbox.Receive()
                 match notification with
-                | ElectionTimeout -> printfn "todo - implement election timeout"
-                | RpcIn rpcIn -> printfn "todo - implement rpc in"
+                | ElectionTimeout -> log.Information "todo - implement election timeout (follower)"
+                | RpcIn rpcIn -> log.Information "todo - implement rpc in"
                 return! follower ()
             }
         follower ())    
