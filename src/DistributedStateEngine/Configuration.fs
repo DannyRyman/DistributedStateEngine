@@ -5,4 +5,3 @@
 
     let config = new Config()
     config.Load("config.yaml")
-
