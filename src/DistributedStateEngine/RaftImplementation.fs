@@ -5,6 +5,7 @@ open CommunicationTypes
 open Communication
 open Logging
 open fszmq
+open Configuration
 
 module private persistedState =
   let mutable private currentTerm = 0UL  
@@ -15,14 +16,16 @@ module private persistedState =
   let getCurrentTerm () =
     currentTerm   
 
-let castVote term =
-  let requestVote = { Term = term; CandidateId = "Todo"; LastLogIndex = 1UL; LastLogTerm = 0UL }     
+let castVote candidateId term =
+  let requestVote = { Term = term; CandidateId = candidateId; LastLogIndex = 1UL; LastLogTerm = 0UL }     
   broadcast (RequestVote requestVote)
+
+let castVoteForSelf = castVote (config.ThisNode.Port.ToString())
 
 let startElection () = 
   let currentTerm = persistedState.incrementCurrentTerm() 
   log.Information("starting election {term}", currentTerm)  
-  castVote currentTerm
+  castVoteForSelf currentTerm
     
 let raftState (inbox:MailboxProcessor<RaftNotification>) =
     
@@ -36,7 +39,7 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
     }
   
   let rec follower() = 
-    async {          
+    async {
       let! notification = receiveOrTimeout()
       match notification with
       | ElectionTimeout -> 
@@ -48,7 +51,7 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
   
   and candidate() = 
     async {
-      startElection ()
+      startElection()      
       let! notification = receiveOrTimeout()
       match notification with
       | ElectionTimeout -> 
