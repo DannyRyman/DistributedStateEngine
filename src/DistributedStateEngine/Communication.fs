@@ -5,15 +5,15 @@ module internal Communication
 open CommunicationTypes
 open Configuration
 open System.Text
-open System.Threading
 open SerializationLibrary
 open fszmq
 open fszmq.Socket
 open Microsoft.FSharp.Control
+open Logging
 
 let publisherContext = new Context()
 
-let createPublisher() =   
+let createPublisher() =     
   let publisher = Context.pub publisherContext
   printfn "creating publisher for port number: %i" config.ThisNode.Port
   Socket.bind publisher ("tcp://*:" + config.ThisNode.Port.ToString())  
@@ -22,17 +22,16 @@ let createPublisher() =
 // Create the publisher
 let private publisher = createPublisher()
 
-// Private communication functions
-let private unicastMessage (publisher : Socket) (destinationNode : string) (msg : RpcCall) = 
-  publisher <~| Encoding.ASCII.GetBytes(destinationNode) <<| (serializeToByteArray msg)
-let broadcastMessage (publisher : Socket) (msg : RpcCall) = 
-  printfn "Thread %i" Thread.CurrentThread.ManagedThreadId
-  publisher <~| "ALL"B <<| (serializeToByteArray msg)
+let private publishMessage (destinationNode : string) (msg : RpcCall) =
+  try
+    publisher <~| Encoding.ASCII.GetBytes(destinationNode) <<| (serializeToByteArray msg)
+  with
+    | :? ZMQError as ex -> log.Error("Zeromq Error {zmqErrorNumber} {exception}", ex.ErrorNumber, ex.ToString())
+    | _ -> reraise()
 
 // Public outbound communication functions
-let unicast = unicastMessage publisher
-//let unicast destinationNode msg = unicastMessage publisher destinationNode msg
-let broadcast = broadcastMessage publisher
+let unicast (destinationNode : string) = publishMessage destinationNode
+let broadcast = publishMessage "ALL"
 
 // Subscriber binding
 let private createSubscription (mailboxProcessor : MailboxProcessor<RaftNotification>) = 

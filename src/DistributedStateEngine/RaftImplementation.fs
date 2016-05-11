@@ -22,11 +22,7 @@ let castVote term =
 let startElection () = 
   let currentTerm = persistedState.incrementCurrentTerm() 
   log.Information("starting election {term}", currentTerm)  
-  try
-    castVote currentTerm
-  with
-    | :? ZMQError as ex -> printfn "Zeromq Error %i %s" ex.ErrorNumber (ex.ToString())
-    | ex -> printfn "something bad happened %s" (ex.ToString())
+  castVote currentTerm
     
 let raftState (inbox:MailboxProcessor<RaftNotification>) =
     
@@ -64,9 +60,15 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
  
   follower()
 
-let init (cancellationToken : CancellationToken) = async {    
-  let mailbox = new MailboxProcessor<RaftNotification>(raftState)
-  setupRemoteSubscriptions(mailbox)
-  mailbox.Start()    
+let init (cancellationToken : CancellationToken) = async {     
+  try 
+    let mailbox = new MailboxProcessor<RaftNotification>(raftState)
+    mailbox.Error.Add(fun exn -> 
+      log.Error("Unhandled exception in raft server {exception}. Exiting.", exn)
+    )
+    setupRemoteSubscriptions(mailbox)
+    mailbox.Start()    
+  with
+    | ex -> log.Error("Unexpected exception initializing raft server {exception}. Exiting.", ex)
   cancellationToken.WaitHandle.WaitOne() |> ignore  
 }
