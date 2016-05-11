@@ -2,7 +2,7 @@
 
 open System
 
-type AppendEntriesOut = 
+type AppendEntries = 
   { Term : uint64
     LeaderId : string
     PrevLogIndex : uint64
@@ -10,20 +10,26 @@ type AppendEntriesOut =
     Entries : string []
     LeaderCommit : uint64 }
 
-type AppendEntriesIn = 
+type AppendEntriesResponse = 
   { Term : uint64
     Success : bool }
 
-type RequestVoteOut = 
+type RequestVote = 
   { Term : uint64
     CandidateId : string
     LastLogIndex : uint64
     LastLogTerm : uint64 }
 
-type RequestVoteIn = 
+type RequestVoteResponse = 
   { Term : uint64
     VoteGranted : bool }
 
-type RpcIn = 
-  | AppendEntries of AppendEntriesIn
-  | RequestVote of RequestVoteIn
+type RpcCall =   
+  | RequestVote of RequestVote
+  | RequestVoteResponse of RequestVoteResponse  
+  | AppendEntries of AppendEntries
+  | AppendEntriesResponse of AppendEntriesResponse
+
+type RaftNotification = 
+  | ElectionTimeout
+  | RpcCall of RpcCall

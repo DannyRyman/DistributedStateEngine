@@ -71,6 +71,7 @@
     <Compile Include="Configuration.fs" />
     <Compile Include="Logger.fs" />
     <Compile Include="TimerLibrary.fs" />
+    <Compile Include="SerializationLibrary.fs" />
     <Compile Include="CommunicationTypes.fs" />
     <Compile Include="Communication.fs" />
     <Compile Include="RaftImplementation.fs" />
@@ -105,6 +106,10 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
+    <Reference Include="Wire">
+      <HintPath>..\packages\Wire.0.0.6\lib\Wire.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="ZeroMQ">
       <HintPath>..\packages\ZeroMQ.4.1.0.17\lib\net40\ZeroMQ.dll</HintPath>
       <Private>True</Private>

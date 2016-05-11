@@ -11,6 +11,10 @@ open RaftImplementation
 [<EntryPoint>]
 let main argv = 
   printfn "libzmq version: %A" ZMQ.version
-  Async.Start init
+  let tokenSource = new CancellationTokenSource()
+  let token = tokenSource.Token
+  Async.Start (init token)
+  Console.ReadLine() |> ignore
+  tokenSource.Cancel()
   Console.ReadLine() |> ignore
   0 // return an integer exit code

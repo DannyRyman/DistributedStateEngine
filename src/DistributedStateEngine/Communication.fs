@@ -2,35 +2,40 @@
 // http://zguide.zeromq.org/page:all
 module internal Communication
 
-open System
+open CommunicationTypes
 open Configuration
-open FSharp.Configuration
 open System.Text
 open System.Threading
+open SerializationLibrary
 open fszmq
 open fszmq.Socket
 open Microsoft.FSharp.Control
 
-let private createPublisher() = 
-  let publisherContext = new Context()
+let publisherContext = new Context()
+
+let createPublisher() =   
   let publisher = Context.pub publisherContext
-  Socket.setOption publisher (ZMQ.SNDHWM, 1100000)
   printfn "creating publisher for port number: %i" config.ThisNode.Port
-  Socket.bind publisher ("tcp://*:" + config.ThisNode.Port.ToString())
+  Socket.bind publisher ("tcp://*:" + config.ThisNode.Port.ToString())  
   publisher
 
 // Create the publisher
 let private publisher = createPublisher()
+
 // Private communication functions
-let private unicastMessage (publisher : Socket) (destinationNode : string) (msg : string) = 
-  publisher <~| Encoding.ASCII.GetBytes(destinationNode) <<| Encoding.ASCII.GetBytes(msg)
-let private broadcastMessage (publisher : Socket) (msg : string) = publisher <~| "ALL"B <<| Encoding.ASCII.GetBytes(msg)
+let private unicastMessage (publisher : Socket) (destinationNode : string) (msg : RpcCall) = 
+  publisher <~| Encoding.ASCII.GetBytes(destinationNode) <<| (serializeToByteArray msg)
+let broadcastMessage (publisher : Socket) (msg : RpcCall) = 
+  printfn "Thread %i" Thread.CurrentThread.ManagedThreadId
+  publisher <~| "ALL"B <<| (serializeToByteArray msg)
+
 // Public outbound communication functions
-let unicast destinationNode msg = unicastMessage publisher destinationNode msg
-let broadcast msg = broadcastMessage publisher msg
+let unicast = unicastMessage publisher
+//let unicast destinationNode msg = unicastMessage publisher destinationNode msg
+let broadcast = broadcastMessage publisher
 
 // Subscriber binding
-let private createSubscription (mailboxProcessor : MailboxProcessor<string>) = 
+let private createSubscription (mailboxProcessor : MailboxProcessor<RaftNotification>) = 
   async { 
     use subscriberContext = new Context()
     use subscriber = Context.sub subscriberContext
@@ -43,11 +48,12 @@ let private createSubscription (mailboxProcessor : MailboxProcessor<string>) =
     let rec loop() = 
       // ignore the topic header
       Socket.recv subscriber |> ignore
-      let msg = Socket.recv subscriber |> Encoding.ASCII.GetString
-      mailboxProcessor.Post msg
+      let msg = Socket.recv subscriber //|> Encoding.ASCII.GetString           
+      let rpcCall = deserializeFromByteArray<RpcCall>(msg)
+      mailboxProcessor.Post (RpcCall rpcCall)
       loop()
     loop()
   }
 
-let setupRemoteSubscriptions (mailboxProcessor : MailboxProcessor<string>) = 
+let setupRemoteSubscriptions (mailboxProcessor : MailboxProcessor<RaftNotification>) = 
   Async.Start(createSubscription mailboxProcessor)
