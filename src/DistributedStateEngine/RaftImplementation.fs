@@ -20,19 +20,33 @@ let castVote candidateId term =
   let requestVote = { Term = term; CandidateId = candidateId; LastLogIndex = 1UL; LastLogTerm = 0UL }     
   broadcast (RequestVote requestVote)
 
-let castVoteForSelf = castVote (config.ThisNode.Port.ToString())
+let sendRequestVoteForSelf = castVote (config.ThisNode.Port.ToString())
 
-let startElection () = 
-  let currentTerm = persistedState.incrementCurrentTerm() 
-  log.Information("starting election {term}", currentTerm)  
-  castVoteForSelf currentTerm
-    
+type TimeoutService(fn) =
+  let timeout fn = MailboxProcessor.Start(fun agent ->
+    let rec loop () = async {
+      let rnd = System.Random()
+      let timeout = rnd.Next(100,150)
+      let! r = agent.TryReceive(timeout)      
+      match r with
+      | Some _ -> return! loop ()
+      | None -> fn(); return! loop ()       
+    }
+    loop ()
+  )
+  let mailbox = timeout fn
+  member x.Reset() = mailbox.Post(null)
+
 let raftState (inbox:MailboxProcessor<RaftNotification>) =
+  
+  let electionTimer = new TimeoutService(fun () -> 
+    inbox.Post(ElectionTimeout)
+  )
     
-  let receiveOrTimeout() = 
+  let receive() = 
     async { 
       // todo randomise the timeout
-      let! result = inbox.Receive(100) |> Async.Catch
+      let! result = inbox.Receive() |> Async.Catch
       return match result with
               | Choice1Of2 r -> r
               | Choice2Of2 _ -> ElectionTimeout
@@ -40,7 +54,7 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
   
   let rec follower() = 
     async {
-      let! notification = receiveOrTimeout()
+      let! notification = receive()
       match notification with
       | ElectionTimeout -> 
         log.Information "Election timeout received. Transitioning from follower -> candidate"
@@ -51,8 +65,13 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
   
   and candidate() = 
     async {
-      startElection()      
-      let! notification = receiveOrTimeout()
+      let currentTerm = persistedState.incrementCurrentTerm() 
+      log.Information("starting election {term}", currentTerm)  
+      // todo increment vote count
+      electionTimer.Reset ()
+      sendRequestVoteForSelf currentTerm      
+
+      let! notification = receive()
       match notification with
       | ElectionTimeout -> 
         log.Information "todo - implement election timeout (candidate)"
@@ -63,9 +82,17 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
  
   follower()
 
+
+
 let init (cancellationToken : CancellationToken) = async {     
   try 
+    
     let mailbox = new MailboxProcessor<RaftNotification>(raftState)
+
+    let timeoutService = new TimeoutService(fun () -> 
+      mailbox.Post ElectionTimeout
+    )
+
     mailbox.Error.Add(fun exn -> 
       log.Error("Unhandled exception in raft server {exception}. Exiting.", exn)
     )
