@@ -21,7 +21,8 @@ type RequestVote =
     LastLogTerm : uint64 }
 
 type RequestVoteResponse = 
-  { Term : uint64
+  { NodeId: string
+    Term : uint64
     VoteGranted : bool }
 
 type RpcCall =   

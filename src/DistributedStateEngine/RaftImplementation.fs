@@ -52,34 +52,66 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
               | Choice2Of2 _ -> ElectionTimeout
     }
   
+  let castVote (recordOfVotesCast:Map<string, bool>) (nodeId:string) (isYesVote:bool) =        
+    recordOfVotesCast.Add(nodeId, isYesVote)
+
   let rec follower() = 
     async {
-      let! notification = receive()
+      let! notification = receive ()
       match notification with
       | ElectionTimeout -> 
         log.Information "Election timeout received. Transitioning from follower -> candidate"
-        return! candidate()
+        return! startElection ()
       | RpcCall _ -> log.Information "todo - implement rpc in (follower)"
-      return! follower()
+      return! follower ()
     }
-  
-  and candidate() = 
+ 
+  and startElection () =
+    let currentTerm = persistedState.incrementCurrentTerm() 
+    log.Information("starting election {term}", currentTerm)  
+    let recordOfVotesCast = castVote Map.empty (config.ThisNode.Port.ToString()) true
+    electionTimer.Reset ()
+    sendRequestVoteForSelf currentTerm
+    candidate (recordOfVotesCast)
+
+  and candidate (recordOfVotesCast:Map<string, bool>) = 
     async {
-      let currentTerm = persistedState.incrementCurrentTerm() 
-      log.Information("starting election {term}", currentTerm)  
-      // todo increment vote count
-      electionTimer.Reset ()
-      sendRequestVoteForSelf currentTerm      
+      let n = config.OtherNodes.Count
+      let majority = n / 2 + 1 // int division
+      
+      // todo only count voteGranted=true responses
+      if recordOfVotesCast.Count > majority then
+        printfn "todo implement becoming a leader"
+        return! leader()
 
       let! notification = receive()
       match notification with
       | ElectionTimeout -> 
         log.Information "todo - implement election timeout (candidate)"
-        return! candidate()
-      | RpcCall _ -> log.Information "todo - implement rpc in (candidate)"
-      return! candidate()
+        return! startElection ()
+      | RpcCall rpcCall ->
+          match rpcCall with
+          | RequestVoteResponse voteResponse -> 
+            log.Information("received a vote response {voteResponse)", voteResponse)
+            let newRecordOfVotesCast = castVote recordOfVotesCast voteResponse.NodeId voteResponse.VoteGranted
+            return! candidate(newRecordOfVotesCast) 
+          | _ ->
+            log.Information("todo - implement other responses for candidate")
+            return! candidate(recordOfVotesCast) 
     }
- 
+   
+  and leader () = 
+    async {
+      let! notification = receive()
+      match notification with
+      | ElectionTimeout -> 
+        log.Information "todo - implement election timeout (leader)"
+        return! leader ()
+      | RpcCall _ -> 
+          log.Information "todo - implement rpc in (leader)"
+          return! leader ()
+    }
+
   follower()
 
 
