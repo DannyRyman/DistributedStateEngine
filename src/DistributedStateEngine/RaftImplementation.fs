@@ -65,7 +65,23 @@ type Server() =
       inbox.Post(ElectionTimeout)
     ), 100, 150) 
 
-    electionTimeout.Start()
+    let createAppendEntries (entries) =
+      { Term = persistedState.getCurrentTerm()
+        LeaderId = "todo" // todo
+        PrevLogIndex = persistedState.getLastLogIndex()
+        PrevLogTerm = persistedState.getLastLogTerm()
+        Entries = entries
+        LeaderCommit = 1UL } // todo}
+
+    let heartbeatTimeout = new TimeoutService((fun () -> 
+      printfn "sending heartbeat"
+      let appendEntries = createAppendEntries [||]
+      broadcast (AppendEntries appendEntries)
+    ), 50, 50)
+
+    let intialize () = 
+      electionTimeout.Start()
+      initialContext
 
     let broadcastRequestVote () = 
       let requestVote = { Term = persistedState.getCurrentTerm(); CandidateId = config.ThisNode.Port.ToString(); LastLogIndex = 1UL; LastLogTerm = 0UL }     
@@ -92,6 +108,7 @@ type Server() =
     
     let becomeLeader () =
       electionTimeout.Stop()
+      heartbeatTimeout.Start()
       let leaderState = { 
         State = Leader
         CountedVotes = Map.empty
@@ -126,7 +143,7 @@ type Server() =
       | RpcCall _, _ -> return! handle(context)
     }
 
-    handle(initialContext)
+    handle(intialize ())
    
   member x.Start (cancellationToken : CancellationToken) = 
     let mailbox = new MailboxProcessor<RaftNotification>(notificationHandler)
