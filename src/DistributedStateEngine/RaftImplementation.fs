@@ -9,12 +9,23 @@ open Configuration
 
 module private persistedState =
   let mutable private currentTerm = 0UL  
+  let mutable private votedFor : string = null 
   // todo add persistence
   let incrementCurrentTerm () =
     currentTerm <- currentTerm + 1UL
     currentTerm   
   let getCurrentTerm () =
     currentTerm   
+  let getVotedFor () =
+    votedFor
+  let setVotedFor nodeId =
+    votedFor <- nodeId
+  let getLastLogIndex () =
+    1UL
+  let getLastLogTerm () =
+    1UL
+    // todo implement
+
 
 let castVote candidateId term =
   let requestVote = { Term = term; CandidateId = candidateId; LastLogIndex = 1UL; LastLogTerm = 0UL }     
@@ -22,27 +33,77 @@ let castVote candidateId term =
 
 let sendRequestVoteForSelf = castVote (config.ThisNode.Port.ToString())
 
-type TimeoutService(fn) =
-  let timeout fn = MailboxProcessor.Start(fun agent ->
-    let rec loop () = async {
-      let rnd = System.Random()
-      let timeout = rnd.Next(100,150)
-      let! r = agent.TryReceive(timeout)      
+type TimeoutServiceOperations =
+  | Reset
+  | Start
+  | Stop
+
+type TimeoutService(fn) =  
+
+  let timeout fn = MailboxProcessor<TimeoutServiceOperations>.Start(fun agent ->
+    let rec started () = async {
+        let rnd = System.Random()
+        let timeout = rnd.Next(100,150)
+        let! r = agent.TryReceive(timeout)      
+        match r with
+        | Some operation -> 
+          match operation with
+          | Reset -> return! started()
+          | Start -> return! started()
+          | Stop -> return! stopped()
+        | None -> fn(); return! started ()       
+      }
+    and stopped () = async {
+      let! r = agent.Receive()      
       match r with
-      | Some _ -> return! loop ()
-      | None -> fn(); return! loop ()       
-    }
-    loop ()
+      | Reset -> return! stopped()
+      | Start -> return! started()
+      | Stop -> return! stopped()      
+    } 
+    stopped ()
   )
   let mailbox = timeout fn
-  member x.Reset() = mailbox.Post(null)
+  member x.Start() = mailbox.Post(Start)
+  member x.Stop() = mailbox.Post(Stop)
+  member x.Reset() = mailbox.Post(Reset)
 
 let raftState (inbox:MailboxProcessor<RaftNotification>) =
   
   let electionTimer = new TimeoutService(fun () -> 
     inbox.Post(ElectionTimeout)
   )
+
+  electionTimer.Start()
     
+  let heartbeatTimer = new TimeoutService(fun () -> 
+    
+    // todo check previous entries
+    // todo leader commit
+    let emptyAppendEntry = { 
+      Term = persistedState.getCurrentTerm();
+      LeaderId = config.ThisNode.Port.ToString();
+      PrevLogIndex = persistedState.getLastLogIndex();
+      PrevLogTerm = persistedState.getLastLogTerm();
+      Entries = Array.empty
+      LeaderCommit = 0UL }
+
+    log.Information("Sending heartbeat")
+    broadcast (AppendEntries emptyAppendEntry)
+  )
+
+  let shouldGrantVote (voteRequest:RequestVote) =    
+    persistedState.getCurrentTerm() >= voteRequest.Term
+    && (isNull(persistedState.getVotedFor()) || persistedState.getVotedFor() = voteRequest.CandidateId)
+    && voteRequest.LastLogIndex >= persistedState.getLastLogIndex()
+
+  let replyToVoteRequest (voteRequest:RequestVote) =
+    log.Information("replying to vote request {voteRequest}", voteRequest)
+    let grantVote = shouldGrantVote voteRequest
+    if grantVote then
+      persistedState.setVotedFor voteRequest.CandidateId
+    let requestVoteResponse =  { NodeId=  config.ThisNode.Port.ToString(); Term = persistedState.getCurrentTerm(); VoteGranted = grantVote }
+    unicast voteRequest.CandidateId (RequestVoteResponse requestVoteResponse)
+
   let receive() = 
     async { 
       // todo randomise the timeout
@@ -82,7 +143,7 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
       // todo only count voteGranted=true responses
       if recordOfVotesCast.Count > majority then
         printfn "todo implement becoming a leader"
-        return! leader()
+        return! becomeleader()
 
       let! notification = receive()
       match notification with
@@ -91,6 +152,10 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
         return! startElection ()
       | RpcCall rpcCall ->
           match rpcCall with
+          | RequestVote voteRequest ->
+            log.Information("received a vote request {voteRequest}", voteRequest)
+            replyToVoteRequest(voteRequest)
+            return! candidate(recordOfVotesCast) 
           | RequestVoteResponse voteResponse -> 
             log.Information("received a vote response {voteResponse)", voteResponse)
             let newRecordOfVotesCast = castVote recordOfVotesCast voteResponse.NodeId voteResponse.VoteGranted
@@ -99,7 +164,11 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
             log.Information("todo - implement other responses for candidate")
             return! candidate(recordOfVotesCast) 
     }
-   
+  
+  and becomeleader () =
+    heartbeatTimer.Start ()
+    leader()
+
   and leader () = 
     async {
       let! notification = receive()
@@ -108,8 +177,8 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
         log.Information "todo - implement election timeout (leader)"
         return! leader ()
       | RpcCall _ -> 
-          log.Information "todo - implement rpc in (leader)"
-          return! leader ()
+        log.Information "todo - implement rpc in (leader)"
+        return! leader ()
     }
 
   follower()
@@ -120,10 +189,6 @@ let init (cancellationToken : CancellationToken) = async {
   try 
     
     let mailbox = new MailboxProcessor<RaftNotification>(raftState)
-
-    let timeoutService = new TimeoutService(fun () -> 
-      mailbox.Post ElectionTimeout
-    )
 
     mailbox.Error.Add(fun exn -> 
       log.Error("Unhandled exception in raft server {exception}. Exiting.", exn)
