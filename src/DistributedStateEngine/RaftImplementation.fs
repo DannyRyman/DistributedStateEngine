@@ -38,14 +38,13 @@ let sendRequestVoteForSelf = castVote (config.ThisNode.Port.ToString())
 
 let raftState (inbox:MailboxProcessor<RaftNotification>) =
   
-  let electionTimer = new TimeoutService(fun () -> 
+  let electionTimer = new TimeoutService ((fun () -> 
     inbox.Post(ElectionTimeout)
-  )
+  ), 100, 150)
 
   electionTimer.Start()
     
-  let heartbeatTimer = new TimeoutService(fun () -> 
-    
+  let heartbeatTimer = new TimeoutService((fun () ->     
     // todo check previous entries
     // todo leader commit
     let emptyAppendEntry = { 
@@ -58,7 +57,7 @@ let raftState (inbox:MailboxProcessor<RaftNotification>) =
 
     log.Information("Sending heartbeat")
     broadcast (AppendEntries emptyAppendEntry)
-  )
+  ), 50, 50)
 
   let shouldGrantVote (voteRequest:RequestVote) =    
     persistedState.getCurrentTerm() >= voteRequest.Term

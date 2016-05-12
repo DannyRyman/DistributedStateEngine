@@ -5,12 +5,12 @@ type TimeoutServiceOperations =
   | Start
   | Stop
 
-type TimeoutService(fn) =  
+type TimeoutService(fn, minimumTimeout, maximumTimeout) =  
 
   let timeout fn = MailboxProcessor<TimeoutServiceOperations>.Start(fun agent ->
     let rec started () = async {
         let rnd = System.Random()
-        let timeout = rnd.Next(100,150)
+        let timeout = rnd.Next(minimumTimeout,maximumTimeout)
         let! r = agent.TryReceive(timeout)      
         match r with
         | Some operation -> 
