@@ -1,13 +1,35 @@
 ﻿module TimerLibrary
 
-open System.Threading
-open System.Threading.Tasks
+type TimeoutServiceOperations =
+  | Reset
+  | Start
+  | Stop
 
-let AwaitTaskVoid : Task -> Async<unit> = Async.AwaitIAsyncResult >> Async.Ignore
+type TimeoutService(fn) =  
 
-let DoPeriodicWork (f : unit -> Async<unit>) (interval : int) (token : CancellationToken) = 
-  async { 
-    while not token.IsCancellationRequested do
-      do! f()
-      do! Task.Delay(interval, token) |> AwaitTaskVoid
-  }
+  let timeout fn = MailboxProcessor<TimeoutServiceOperations>.Start(fun agent ->
+    let rec started () = async {
+        let rnd = System.Random()
+        let timeout = rnd.Next(100,150)
+        let! r = agent.TryReceive(timeout)      
+        match r with
+        | Some operation -> 
+          match operation with
+          | Reset -> return! started()
+          | Start -> return! started()
+          | Stop -> return! stopped()
+        | None -> fn(); return! started ()       
+      }
+    and stopped () = async {
+      let! r = agent.Receive()      
+      match r with
+      | Reset -> return! stopped()
+      | Start -> return! started()
+      | Stop -> return! stopped()      
+    } 
+    stopped ()
+  )
+  let mailbox = timeout fn
+  member x.Start() = mailbox.Post(Start)
+  member x.Stop() = mailbox.Post(Stop)
+  member x.Reset() = mailbox.Post(Reset)

@@ -6,6 +6,7 @@ open Communication
 open Logging
 open fszmq
 open Configuration
+open TimerLibrary
 
 module private persistedState =
   let mutable private currentTerm = 0UL  
@@ -33,39 +34,7 @@ let castVote candidateId term =
 
 let sendRequestVoteForSelf = castVote (config.ThisNode.Port.ToString())
 
-type TimeoutServiceOperations =
-  | Reset
-  | Start
-  | Stop
 
-type TimeoutService(fn) =  
-
-  let timeout fn = MailboxProcessor<TimeoutServiceOperations>.Start(fun agent ->
-    let rec started () = async {
-        let rnd = System.Random()
-        let timeout = rnd.Next(100,150)
-        let! r = agent.TryReceive(timeout)      
-        match r with
-        | Some operation -> 
-          match operation with
-          | Reset -> return! started()
-          | Start -> return! started()
-          | Stop -> return! stopped()
-        | None -> fn(); return! started ()       
-      }
-    and stopped () = async {
-      let! r = agent.Receive()      
-      match r with
-      | Reset -> return! stopped()
-      | Start -> return! started()
-      | Stop -> return! stopped()      
-    } 
-    stopped ()
-  )
-  let mailbox = timeout fn
-  member x.Start() = mailbox.Post(Start)
-  member x.Stop() = mailbox.Post(Stop)
-  member x.Reset() = mailbox.Post(Reset)
 
 let raftState (inbox:MailboxProcessor<RaftNotification>) =
   
