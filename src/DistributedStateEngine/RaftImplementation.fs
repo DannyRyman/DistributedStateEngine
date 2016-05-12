@@ -4,7 +4,6 @@ open System.Threading
 open CommunicationTypes
 open Communication
 open Logging
-open fszmq
 open Configuration
 open TimerLibrary
 
@@ -24,146 +23,113 @@ module private persistedState =
   let getLastLogIndex () =
     1UL
   let getLastLogTerm () =
-    1UL
     // todo implement
+    1UL    
 
+type State = 
+  | Follower
+  | Candidate
+  | Leader
 
-let castVote candidateId term =
-  let requestVote = { Term = term; CandidateId = candidateId; LastLogIndex = 1UL; LastLogTerm = 0UL }     
-  broadcast (RequestVote requestVote)
+// todo is the a generic way to do this?
+let getStateName state = 
+  match state with 
+  | Follower -> "Follower"
+  | Candidate -> "Candidate"
+  | Leader -> "Leader"
 
-let sendRequestVoteForSelf = castVote (config.ThisNode.Port.ToString())
+let getMessageName (message:RaftNotification) =
+  match message with
+  | ElectionTimeout -> "ElectionTimeout"
+  | RpcCall (RequestVote _) -> "RequestVote"
+  | RpcCall (RequestVoteResponse _) -> "RequestVoteResponse"
+  | RpcCall (AppendEntries _) -> "AppendEntries"
+  | RpcCall (AppendEntriesResponse _) -> "AppendEntriesResponse"
 
+type Context = {
+  State : State
+  CountedVotes : Map<string, bool>
+}
 
+type Server() = 
 
-let raftState (inbox:MailboxProcessor<RaftNotification>) =
-  
-  let electionTimer = new TimeoutService ((fun () -> 
-    inbox.Post(ElectionTimeout)
-  ), 100, 150)
+  let initialContext = {
+    State = Follower
+    CountedVotes = Map.empty
+  }
 
-  electionTimer.Start()
+  let notificationHandler (inbox:MailboxProcessor<RaftNotification>) =
+
+    let electionTimeout = new TimeoutService ((fun () -> 
+      printfn "election timeout"
+      inbox.Post(ElectionTimeout)
+    ), 100, 150) 
+
+    electionTimeout.Start()
+
+    let broadcastRequestVote () = 
+      let requestVote = { Term = persistedState.getCurrentTerm(); CandidateId = config.ThisNode.Port.ToString(); LastLogIndex = 1UL; LastLogTerm = 0UL }     
+      broadcast (RequestVote requestVote)
+
+    let startElection context =
+      let currentTerm = persistedState.incrementCurrentTerm() 
+      log.Information("starting election {term}", currentTerm)        
+      electionTimeout.Reset ()
+      broadcastRequestVote ()
+      {context with 
+        State = Candidate
+        CountedVotes = context.CountedVotes.Add(config.ThisNode.Port.ToString(), true)}
+
+    let shouldGrantVote (voteRequest:RequestVote) =         
+      persistedState.getCurrentTerm() >= voteRequest.Term
+      && (isNull(persistedState.getVotedFor()) || persistedState.getVotedFor() = voteRequest.CandidateId)
+      && voteRequest.LastLogIndex >= persistedState.getLastLogIndex()
     
-  let heartbeatTimer = new TimeoutService((fun () ->     
-    // todo check previous entries
-    // todo leader commit
-    let emptyAppendEntry = { 
-      Term = persistedState.getCurrentTerm();
-      LeaderId = config.ThisNode.Port.ToString();
-      PrevLogIndex = persistedState.getLastLogIndex();
-      PrevLogTerm = persistedState.getLastLogTerm();
-      Entries = Array.empty
-      LeaderCommit = 0UL }
-
-    log.Information("Sending heartbeat")
-    broadcast (AppendEntries emptyAppendEntry)
-  ), 50, 50)
-
-  let shouldGrantVote (voteRequest:RequestVote) =    
-    persistedState.getCurrentTerm() >= voteRequest.Term
-    && (isNull(persistedState.getVotedFor()) || persistedState.getVotedFor() = voteRequest.CandidateId)
-    && voteRequest.LastLogIndex >= persistedState.getLastLogIndex()
-
-  let replyToVoteRequest (voteRequest:RequestVote) =
-    log.Information("replying to vote request {voteRequest}", voteRequest)
-    let grantVote = shouldGrantVote voteRequest
-    if grantVote then
-      persistedState.setVotedFor voteRequest.CandidateId
-    let requestVoteResponse =  { NodeId=  config.ThisNode.Port.ToString(); Term = persistedState.getCurrentTerm(); VoteGranted = grantVote }
-    unicast voteRequest.CandidateId (RequestVoteResponse requestVoteResponse)
-
-  let receive() = 
-    async { 
-      // todo randomise the timeout
-      let! result = inbox.Receive() |> Async.Catch
-      return match result with
-              | Choice1Of2 r -> r
-              | Choice2Of2 _ -> ElectionTimeout
-    }
-  
-  let castVote (recordOfVotesCast:Map<string, bool>) (nodeId:string) (isYesVote:bool) =        
-    recordOfVotesCast.Add(nodeId, isYesVote)
-
-  let rec follower() = 
-    async {
-      let! notification = receive ()
-      match notification with
-      | ElectionTimeout -> 
-        log.Information "Election timeout received. Transitioning from follower -> candidate"
-        return! startElection ()
-      | RpcCall _ -> log.Information "todo - implement rpc in (follower)"
-      return! follower ()
-    }
- 
-  and startElection () =
-    let currentTerm = persistedState.incrementCurrentTerm() 
-    log.Information("starting election {term}", currentTerm)  
-    let recordOfVotesCast = castVote Map.empty (config.ThisNode.Port.ToString()) true
-    electionTimer.Reset ()
-    sendRequestVoteForSelf currentTerm
-    candidate (recordOfVotesCast)
-
-  and candidate (recordOfVotesCast:Map<string, bool>) = 
-    async {
+    let replyToVoteRequest voteRequest =      
+      let grantVote = shouldGrantVote voteRequest
+      let requestVoteResponse =  { NodeId=  config.ThisNode.Port.ToString(); Term = persistedState.getCurrentTerm(); VoteGranted = grantVote }
+      unicast voteRequest.CandidateId (RequestVoteResponse requestVoteResponse) 
+    
+    let becomeLeader () =
+      electionTimeout.Stop()
+      let leaderState = { 
+        State = Leader
+        CountedVotes = Map.empty
+      }
+      leaderState
+      
+    let receiveVoteResponse (context:Context) (voteResponse:RequestVoteResponse) =  
       let n = config.OtherNodes.Count
       let majority = n / 2 + 1 // int division
+      // todo what should be done with the term info?
+      // todo only count yes's
+      let updatedCountedVotes = context.CountedVotes.Add(voteResponse.NodeId, voteResponse.VoteGranted)  
       
-      // todo only count voteGranted=true responses
-      if recordOfVotesCast.Count > majority then
-        printfn "todo implement becoming a leader"
-        return! becomeleader()
-
-      let! notification = receive()
-      match notification with
-      | ElectionTimeout -> 
-        log.Information "todo - implement election timeout (candidate)"
-        return! startElection ()
-      | RpcCall rpcCall ->
-          match rpcCall with
-          | RequestVote voteRequest ->
-            log.Information("received a vote request {voteRequest}", voteRequest)
-            replyToVoteRequest(voteRequest)
-            return! candidate(recordOfVotesCast) 
-          | RequestVoteResponse voteResponse -> 
-            log.Information("received a vote response {voteResponse)", voteResponse)
-            let newRecordOfVotesCast = castVote recordOfVotesCast voteResponse.NodeId voteResponse.VoteGranted
-            return! candidate(newRecordOfVotesCast) 
-          | _ ->
-            log.Information("todo - implement other responses for candidate")
-            return! candidate(recordOfVotesCast) 
-    }
-  
-  and becomeleader () =
-    heartbeatTimer.Start ()
-    leader()
-
-  and leader () = 
-    async {
-      let! notification = receive()
-      match notification with
-      | ElectionTimeout -> 
-        log.Information "todo - implement election timeout (leader)"
-        return! leader ()
-      | RpcCall _ -> 
-        log.Information "todo - implement rpc in (leader)"
-        return! leader ()
+      if updatedCountedVotes.Count >= majority then
+        becomeLeader ()
+      else
+        let updatedContext = 
+          {context with         
+            CountedVotes = updatedCountedVotes}
+        updatedContext
+      
+    let rec handle (context:Context) = async {      
+      let! msg = inbox.Receive()                  
+      log.Information("received message:{msg} current state: {state}", getMessageName(msg), getStateName(context.State))
+      match msg, context.State with
+      | ElectionTimeout, Follower 
+      | ElectionTimeout, Candidate -> return! handle(startElection context)          
+      | RpcCall (RequestVote voteRequest), Follower
+      | RpcCall (RequestVote voteRequest), Candidate -> replyToVoteRequest voteRequest; return! handle(context)
+      | RpcCall (RequestVoteResponse voteResponse), Candidate -> return! handle(receiveVoteResponse context voteResponse)
+      | ElectionTimeout, Leader   
+      | RpcCall _, _ -> return! handle(context)
     }
 
-  follower()
-
-
-
-let init (cancellationToken : CancellationToken) = async {     
-  try 
-    
-    let mailbox = new MailboxProcessor<RaftNotification>(raftState)
-
-    mailbox.Error.Add(fun exn -> 
-      log.Error("Unhandled exception in raft server {exception}. Exiting.", exn)
-    )
+    handle(initialContext)
+   
+  member x.Start (cancellationToken : CancellationToken) = 
+    let mailbox = new MailboxProcessor<RaftNotification>(notificationHandler)
     setupRemoteSubscriptions(mailbox)
-    mailbox.Start()    
-  with
-    | ex -> log.Error("Unexpected exception initializing raft server {exception}. Exiting.", ex)
-  cancellationToken.WaitHandle.WaitOne() |> ignore  
-}
+    mailbox.Start()        
+    cancellationToken.WaitHandle.WaitOne() |> ignore 

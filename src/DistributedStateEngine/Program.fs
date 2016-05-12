@@ -13,7 +13,11 @@ let main argv =
   printfn "libzmq version: %A" ZMQ.version
   let tokenSource = new CancellationTokenSource()
   let token = tokenSource.Token
-  Async.Start (init token)
+  Async.Start ( 
+    async {
+      let server = new Server()
+      server.Start token
+    })
   Console.ReadLine() |> ignore
   tokenSource.Cancel()
   Console.ReadLine() |> ignore
