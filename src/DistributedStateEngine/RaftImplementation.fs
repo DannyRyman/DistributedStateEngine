@@ -38,16 +38,6 @@ let getStateName state =
   | Candidate -> "Candidate"
   | Leader -> "Leader"
 
-let getMessageName (message:RaftNotification) =
-  match message with
-  | ElectionTimeout -> "ElectionTimeout"
-  | RpcCall rpc ->
-    match rpc with 
-    | RpcRequest (RequestVote _) -> "RequestVote"
-    | RpcResponse (RequestVoteResponse _) -> "RequestVoteResponse"     
-    | RpcRequest (AppendEntries _) -> "AppendEntries"
-    | RpcResponse (AppendEntriesResponse _) -> "AppendEntriesResponse"
-
 type Context = {
   State : State
   CountedVotes : Map<string, bool>
@@ -65,7 +55,7 @@ type Server() =
     let electionTimeout = new TimeoutService ((fun () -> 
       printfn "election timeout"
       inbox.Post(ElectionTimeout)
-    ), 100, 150) 
+    ), 3000, 4000) 
 
     let createAppendEntries (entries) =
       { Term = persistedState.getCurrentTerm()
@@ -79,7 +69,7 @@ type Server() =
       printfn "sending heartbeat"
       let appendEntries = createAppendEntries [||]
       broadcast (RpcRequest (AppendEntries appendEntries))
-    ), 50, 50)
+    ), 1000, 1000)
 
     let intialize () = 
       electionTimeout.Start()
@@ -105,11 +95,10 @@ type Server() =
       && (isNull(persistedState.getVotedFor()) || persistedState.getVotedFor() = voteRequest.CandidateId)
       && voteRequest.LastLogIndex >= persistedState.getLastLogIndex()
     
-    let replyToVoteRequest (context:Context) voteRequest =      
+    let replyToVoteRequest voteRequest =      
       let grantVote = shouldGrantVote voteRequest
       let requestVoteResponse =  { NodeId=  config.ThisNode.Port.ToString(); Term = persistedState.getCurrentTerm(); VoteGranted = grantVote }
-      unicast voteRequest.CandidateId (RpcResponse (RequestVoteResponse requestVoteResponse))
-      context
+      unicast voteRequest.CandidateId (RpcResponse (RequestVoteResponse requestVoteResponse))      
     
     let becomeLeader () =
       electionTimeout.Stop()
@@ -158,15 +147,14 @@ type Server() =
 
     let rec listenForMessages (initialContext:Context) = async {      
 
-      // partial apply local functions to make them easier to work with
-      let demoteToFollower () = demoteToFollower initialContext
-      let replyToVoteRequest = replyToVoteRequest initialContext
-      let processVote = processVote initialContext
-      let doNothing () = initialContext
-      let sendAppendEntriesRejectionResponse = sendAppendEntriesRejectionResponse initialContext
+      let! msg = inbox.Receive()    
 
-      let! msg = inbox.Receive()                  
-      log.Information("received message:{msg} current state: {state}", getMessageName(msg), getStateName(initialContext.State))
+      // partial apply local functions to make them easier to work with
+      let demoteToFollower () = demoteToFollower initialContext      
+      let processVote = processVote initialContext
+      let sendAppendEntriesRejectionResponse = sendAppendEntriesRejectionResponse initialContext
+                  
+      log.Information("received message:{msg} current state: {state} term: {term}", getMessageName(msg), getStateName(initialContext.State), persistedState.getCurrentTerm())
       
       // Process any messages returning the updated context
       let newContext = 
@@ -174,22 +162,24 @@ type Server() =
         | ElectionTimeout ->
           match initialContext.State with
           | Follower | Candidate -> startElection ()
-          | Leader -> doNothing ()
+          | Leader -> initialContext
         | RpcCall (RpcRequest (RequestVote r)) ->
           match initialContext.State with
-          | Follower | Candidate  -> replyToVoteRequest r
+          | Follower | Candidate  -> replyToVoteRequest r; initialContext
           | Leader when requestTermExceedsCurrentTerm (RequestVote r) -> demoteToFollower ()          
-          | Leader -> doNothing ()                       
+          | Leader -> initialContext       
         | RpcCall (RpcResponse (RequestVoteResponse r)) ->
-          match initialContext.State with
+          match initialContext.State with 
           | Candidate -> processVote r
-          | Follower | Leader -> doNothing ()
+          | Follower | Leader -> initialContext
         | RpcCall (RpcRequest (AppendEntries r)) -> 
           match initialContext.State with
-          | Follower -> electionTimeout.Reset(); doNothing() // todo process appendentries
-          | Candidate | Leader when requestTermExceedsCurrentTerm (AppendEntries r) -> demoteToFollower ()
+          | Follower -> electionTimeout.Reset(); initialContext // todo process appendentries
+          | Candidate | Leader when requestTermExceedsCurrentTerm (AppendEntries r) ->             
+            inbox.Post(msg); // repost the append entries so that it can be processed as a follower  
+            demoteToFollower ()                        
           | Candidate | Leader -> sendAppendEntriesRejectionResponse r.LeaderId
-        | _ -> doNothing ()
+        | _ -> initialContext
 
       return! listenForMessages newContext
     }

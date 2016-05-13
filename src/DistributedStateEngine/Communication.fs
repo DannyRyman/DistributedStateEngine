@@ -24,6 +24,7 @@ let private publisher = createPublisher()
 
 let private publishMessage (destinationNode : string) (msg : RpcCall) =
   try
+    log.Information ("Sending message {message} to {destination}", getMessageName(RpcCall msg), destinationNode)
     publisher <~| Encoding.ASCII.GetBytes(destinationNode) <<| (serializeToByteArray msg)
   with
     | :? ZMQError as ex -> log.Error("Zeromq Error {zmqErrorNumber} {exception}", ex.ErrorNumber, ex.ToString())

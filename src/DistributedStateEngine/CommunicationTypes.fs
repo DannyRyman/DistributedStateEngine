@@ -40,3 +40,13 @@ type RpcCall =
 type RaftNotification = 
   | ElectionTimeout
   | RpcCall of RpcCall
+
+let getMessageName (message:RaftNotification) =
+  match message with
+  | ElectionTimeout -> "ElectionTimeout"
+  | RpcCall rpc ->
+    match rpc with 
+    | RpcRequest (RequestVote _) -> "RequestVote"
+    | RpcResponse (RequestVoteResponse _) -> "RequestVoteResponse"     
+    | RpcRequest (AppendEntries _) -> "AppendEntries"
+    | RpcResponse (AppendEntriesResponse _) -> "AppendEntriesResponse"
