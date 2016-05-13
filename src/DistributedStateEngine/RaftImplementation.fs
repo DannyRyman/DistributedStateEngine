@@ -130,28 +130,28 @@ type Server() =
       else        
         {context with         
             CountedVotes = updatedCountedVotes}
-     
-    let demoteToFollowerIfTermExceeded (initialContext:Context) (inbox:MailboxProcessor<RaftNotification>) (request : RpcRequest) =
+    
+    let requestTermExceedsCurrentTerm (request : RpcRequest) =
       let term = match request with
                   | AppendEntries r -> r.Term
                   | RequestVote r -> r.Term                                    
+      term > persistedState.getCurrentTerm()
 
-      let shouldDemote = term > persistedState.getCurrentTerm()
-      match shouldDemote with
-      | true ->         
-        // repost the message so that it can be rehandled in the follower state
-        inbox.Post (RpcCall (RpcRequest request))
-        let newContext = { 
+    let demoteToFollower (initialContext:Context) =
+      let newContext = { 
           State = Follower
           CountedVotes = Map.empty
           }
-        newContext
-      | false -> initialContext   
+      newContext
+      
+
+    let processAppendEntries (initialContext:Context) (request : RpcRequest) =
+      initialContext
 
     let rec listenForMessages (initialContext:Context) = async {      
 
       // partial apply local functions to make them easier to work with
-      let demoteToFollowerIfTermExceeded = demoteToFollowerIfTermExceeded initialContext inbox
+      let demoteToFollower () = demoteToFollower initialContext
       let replyToVoteRequest = replyToVoteRequest initialContext
       let processVote = processVote initialContext
       let doNothing () = initialContext
@@ -168,8 +168,9 @@ type Server() =
           | Leader -> doNothing ()
         | RpcCall (RpcRequest (RequestVote r)) ->
           match initialContext.State with
-          | Follower | Candidate -> replyToVoteRequest r
-          | Leader -> demoteToFollowerIfTermExceeded (RequestVote r) 
+          | Follower | Candidate  -> replyToVoteRequest r
+          | Leader when requestTermExceedsCurrentTerm (RequestVote r) -> demoteToFollower ()          
+          | Leader -> doNothing ()                       
         | RpcCall (RpcResponse (RequestVoteResponse r)) ->
           match initialContext.State with
           | Candidate -> processVote r
