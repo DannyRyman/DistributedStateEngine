@@ -25,11 +25,17 @@ type RequestVoteResponse =
     Term : uint64
     VoteGranted : bool }
 
-type RpcCall =   
-  | RequestVote of RequestVote
+type RpcRequest =   
+  | RequestVote of RequestVote  
+  | AppendEntries of AppendEntries  
+
+type RpcResponse =
   | RequestVoteResponse of RequestVoteResponse  
-  | AppendEntries of AppendEntries
   | AppendEntriesResponse of AppendEntriesResponse
+
+type RpcCall =
+  | RpcRequest of RpcRequest
+  | RpcResponse of RpcResponse 
 
 type RaftNotification = 
   | ElectionTimeout
