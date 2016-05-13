@@ -138,15 +138,23 @@ type Server() =
       term > persistedState.getCurrentTerm()
 
     let demoteToFollower (initialContext:Context) =
+      heartbeatTimeout.Stop()
+      electionTimeout.Start()
       let newContext = { 
           State = Follower
           CountedVotes = Map.empty
           }
       newContext
       
-
-    let processAppendEntries (initialContext:Context) (request : RpcRequest) =
+    let sendAppendEntriesResponse (success:bool) (initialContext:Context) (leaderId:string) =
+      let response = {
+        Term = persistedState.getCurrentTerm()
+        Success = success
+      }
+      unicast (leaderId) (RpcResponse (AppendEntriesResponse response))
       initialContext
+
+    let sendAppendEntriesRejectionResponse = sendAppendEntriesResponse (true)
 
     let rec listenForMessages (initialContext:Context) = async {      
 
@@ -155,6 +163,7 @@ type Server() =
       let replyToVoteRequest = replyToVoteRequest initialContext
       let processVote = processVote initialContext
       let doNothing () = initialContext
+      let sendAppendEntriesRejectionResponse = sendAppendEntriesRejectionResponse initialContext
 
       let! msg = inbox.Receive()                  
       log.Information("received message:{msg} current state: {state}", getMessageName(msg), getStateName(initialContext.State))
@@ -175,6 +184,11 @@ type Server() =
           match initialContext.State with
           | Candidate -> processVote r
           | Follower | Leader -> doNothing ()
+        | RpcCall (RpcRequest (AppendEntries r)) -> 
+          match initialContext.State with
+          | Follower -> electionTimeout.Reset(); doNothing() // todo process appendentries
+          | Candidate | Leader when requestTermExceedsCurrentTerm (AppendEntries r) -> demoteToFollower ()
+          | Candidate | Leader -> sendAppendEntriesRejectionResponse r.LeaderId
         | _ -> doNothing ()
 
       return! listenForMessages newContext
