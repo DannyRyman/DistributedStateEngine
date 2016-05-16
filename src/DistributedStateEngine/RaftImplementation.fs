@@ -14,6 +14,8 @@ module private persistedState =
   let incrementCurrentTerm () =
     currentTerm <- currentTerm + 1UL
     currentTerm   
+  let setCurrentTerm t =
+    currentTerm <- t
   let getCurrentTerm () =
     currentTerm   
   let getVotedFor () =
@@ -145,14 +147,21 @@ type Server() =
 
     let sendAppendEntriesRejectionResponse = sendAppendEntriesResponse (true)
 
+    let updateCurrentTerm term = 
+      persistedState.setCurrentTerm term
+
     let rec listenForMessages (initialContext:Context) = async {      
 
       let! msg = inbox.Receive()    
 
-      // partial apply local functions to make them easier to work with
-      let demoteToFollower () = demoteToFollower initialContext      
+      // partial apply local functions to make them easier to work with   
+      let demoteToFollowerAndResubmitMessage () =
+        inbox.Post msg
+        demoteToFollower initialContext
+
       let processVote = processVote initialContext
       let sendAppendEntriesRejectionResponse = sendAppendEntriesRejectionResponse initialContext
+      
                   
       log.Information("received message:{msg} current state: {state} term: {term}", getMessageName(msg), getStateName(initialContext.State), persistedState.getCurrentTerm())
       
@@ -165,8 +174,12 @@ type Server() =
           | Leader -> initialContext
         | RpcCall (RpcRequest (RequestVote r)) ->
           match initialContext.State with
-          | Follower | Candidate  -> replyToVoteRequest r; initialContext
-          | Leader when requestTermExceedsCurrentTerm (RequestVote r) -> demoteToFollower ()          
+          | Follower | Candidate  -> 
+            replyToVoteRequest r; 
+            initialContext
+          | Leader when requestTermExceedsCurrentTerm (RequestVote r) -> 
+            updateCurrentTerm r.Term
+            demoteToFollowerAndResubmitMessage ()
           | Leader -> initialContext       
         | RpcCall (RpcResponse (RequestVoteResponse r)) ->
           match initialContext.State with 
@@ -174,11 +187,14 @@ type Server() =
           | Follower | Leader -> initialContext
         | RpcCall (RpcRequest (AppendEntries r)) -> 
           match initialContext.State with
-          | Follower -> electionTimeout.Reset(); initialContext // todo process appendentries
-          | Candidate | Leader when requestTermExceedsCurrentTerm (AppendEntries r) ->             
-            inbox.Post(msg); // repost the append entries so that it can be processed as a follower  
-            demoteToFollower ()                        
-          | Candidate | Leader -> sendAppendEntriesRejectionResponse r.LeaderId
+          | Follower -> 
+            electionTimeout.Reset(); 
+            initialContext // todo process appendentries
+          | Candidate | Leader when requestTermExceedsCurrentTerm (AppendEntries r) ->                         
+            updateCurrentTerm r.Term
+            demoteToFollowerAndResubmitMessage ()
+          | Candidate | Leader -> 
+            sendAppendEntriesRejectionResponse r.LeaderId
         | _ -> initialContext
 
       return! listenForMessages newContext
