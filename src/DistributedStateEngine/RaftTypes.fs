@@ -1,12 +1,28 @@
-﻿module internal CommunicationTypes
+﻿module internal RaftTypes
 
-open System
+[< CustomEquality >]
+[< NoComparisonAttribute>]
+type AppendEntryIndexes = {
+  Index : uint64
+  Term : uint64
+}
+with
+  override this.Equals(other) = 
+    match other with
+    | null -> nullArg "other"
+    | :? AppendEntryIndexes as i -> i.GetHashCode() = this.GetHashCode()
+    | _ -> invalidArg "other" "Must be an instance of AppendEntryIndexes"    
+  override this.GetHashCode() = (this.Index, this.Term).GetHashCode()
+
+type LogEntry = {
+  Indexes : AppendEntryIndexes
+  Command : byte[]
+}
 
 type AppendEntries = 
   { Term : uint64
     LeaderId : string
-    PrevLogIndex : uint64
-    PrevLogTerm : uint64
+    PreviousLogIndexes: Option<AppendEntryIndexes>
     Entries : string []
     LeaderCommit : uint64 }
 

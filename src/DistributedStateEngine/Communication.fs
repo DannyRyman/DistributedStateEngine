@@ -2,7 +2,6 @@
 // http://zguide.zeromq.org/page:all
 module internal Communication
 
-open CommunicationTypes
 open Configuration
 open System.Text
 open SerializationLibrary
@@ -10,6 +9,7 @@ open fszmq
 open fszmq.Socket
 open Microsoft.FSharp.Control
 open Logging
+open RaftTypes
 
 let publisherContext = new Context()
 

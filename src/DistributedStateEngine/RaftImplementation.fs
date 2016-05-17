@@ -1,11 +1,12 @@
 ﻿module internal RaftImplementation
 
 open System.Threading
-open CommunicationTypes
 open Communication
 open Logging
 open Configuration
 open TimerLibrary
+open RaftTypes
+open RaftState
 
 module private persistedState =
   let mutable private currentTerm = 0UL  
@@ -59,11 +60,10 @@ type Server() =
       inbox.Post(ElectionTimeout)
     ), 3000, 4000) 
 
-    let createAppendEntries (entries) =
+    let createAppendEntries (entries) =                       
       { Term = persistedState.getCurrentTerm()
         LeaderId = "todo" // todo
-        PrevLogIndex = persistedState.getLastLogIndex()
-        PrevLogTerm = persistedState.getLastLogTerm()
+        PreviousLogIndexes = getLastLogEntry () |> Option.map (fun i -> i.Indexes)
         Entries = entries
         LeaderCommit = 1UL } // todo}
 
@@ -137,18 +137,36 @@ type Server() =
           }
       newContext
       
-    let sendAppendEntriesResponse (success:bool) (initialContext:Context) (leaderId:string) =
+    let sendAppendEntriesResponse (success:bool) (leaderId:string) =
       let response = {
         Term = persistedState.getCurrentTerm()
         Success = success
       }
-      unicast (leaderId) (RpcResponse (AppendEntriesResponse response))
-      initialContext
+      unicast (leaderId) (RpcResponse (AppendEntriesResponse response))      
 
     let sendAppendEntriesRejectionResponse = sendAppendEntriesResponse (true)
 
     let updateCurrentTerm term = 
       persistedState.setCurrentTerm term
+
+    let isValidPreviousLogEntries (appendEntriesRequest:AppendEntries) =
+      let requestPrevLogEntry = appendEntriesRequest.PreviousLogIndexes
+      let localPrevLogEntry = getLastLogEntry ()
+      match localPrevLogEntry, requestPrevLogEntry with 
+      | None, None -> true
+      | Some _, None -> false
+      | None, Some _ -> false
+      | Some localLogEntry, Some requestIndexes -> localLogEntry.Indexes = requestIndexes
+
+    let acceptAppendEntryRequest (appendEntriesRequest:AppendEntries) =
+      not (requestTermExceedsCurrentTerm(AppendEntries appendEntriesRequest))
+      && isValidPreviousLogEntries appendEntriesRequest
+
+    let processAppendEntries (appendEntriesRequest:AppendEntries) =
+      if acceptAppendEntryRequest appendEntriesRequest then       
+        printf "todo"
+      else
+        printf "todo"                   
 
     let rec listenForMessages (initialContext:Context) = async {      
 
@@ -159,9 +177,7 @@ type Server() =
         inbox.Post msg
         demoteToFollower initialContext
 
-      let processVote = processVote initialContext
-      let sendAppendEntriesRejectionResponse = sendAppendEntriesRejectionResponse initialContext
-      
+      let processVote = processVote initialContext      
                   
       log.Information("received message:{msg} current state: {state} term: {term}", getMessageName(msg), getStateName(initialContext.State), persistedState.getCurrentTerm())
       
@@ -189,12 +205,14 @@ type Server() =
           match initialContext.State with
           | Follower -> 
             electionTimeout.Reset(); 
-            initialContext // todo process appendentries
+            processAppendEntries r
+            initialContext 
           | Candidate | Leader when requestTermExceedsCurrentTerm (AppendEntries r) ->                         
             updateCurrentTerm r.Term
             demoteToFollowerAndResubmitMessage ()
           | Candidate | Leader -> 
             sendAppendEntriesRejectionResponse r.LeaderId
+            initialContext
         | _ -> initialContext
 
       return! listenForMessages newContext
@@ -205,5 +223,5 @@ type Server() =
   member x.Start (cancellationToken : CancellationToken) = 
     let mailbox = new MailboxProcessor<RaftNotification>(notificationHandler)
     setupRemoteSubscriptions(mailbox)
-    mailbox.Start()        
+    mailbox.Start()            
     cancellationToken.WaitHandle.WaitOne() |> ignore 
