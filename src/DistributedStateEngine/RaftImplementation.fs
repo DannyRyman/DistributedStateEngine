@@ -1,5 +1,8 @@
 ﻿module internal RaftImplementation
 
+(*
+
+
 open System.Threading
 open Communication
 open Logging
@@ -225,3 +228,5 @@ type Server() =
     setupRemoteSubscriptions(mailbox)
     mailbox.Start()            
     cancellationToken.WaitHandle.WaitOne() |> ignore 
+
+*)

@@ -1,5 +1,6 @@
-﻿module internal RaftTypes
-
+﻿
+module internal RaftTypes
+(*
 [< CustomEquality >]
 [< NoComparisonAttribute>]
 type AppendEntryIndexes = {
@@ -66,3 +67,5 @@ let getMessageName (message:RaftNotification) =
     | RpcResponse (RequestVoteResponse _) -> "RequestVoteResponse"     
     | RpcRequest (AppendEntries _) -> "AppendEntries"
     | RpcResponse (AppendEntriesResponse _) -> "AppendEntriesResponse"
+
+*)

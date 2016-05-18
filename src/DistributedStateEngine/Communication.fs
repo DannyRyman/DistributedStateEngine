@@ -2,6 +2,9 @@
 // http://zguide.zeromq.org/page:all
 module internal Communication
 
+(*
+
+
 open Configuration
 open System.Text
 open SerializationLibrary
@@ -57,3 +60,5 @@ let private createSubscription (mailboxProcessor : MailboxProcessor<RaftNotifica
 
 let setupRemoteSubscriptions (mailboxProcessor : MailboxProcessor<RaftNotification>) = 
   Async.Start(createSubscription mailboxProcessor)
+
+*)

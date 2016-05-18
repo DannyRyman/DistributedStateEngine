@@ -1,5 +1,6 @@
-﻿module internal RaftState
-
+﻿
+module internal RaftState
+(*
 open FSharp.Data.Sql
 open RaftTypes
 open System
@@ -37,6 +38,8 @@ let getLastLogEntry () =
   query { for l in ctx.Main.Log do select {Indexes = {Index = l.Id |> Convert.ToUInt64; Term = l.Term |> Convert.ToUInt64}; Command = l.Command}}
   |> Seq.tryLast   
   
+*)
+
 (*
 let updater =
   MailboxProcessor.Start(fun inbox -> 
