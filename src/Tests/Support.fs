@@ -4,15 +4,10 @@
 module RaftFakes =
   open TimerLibrary
 
-  type RecordedTimeoutServiceCommand =
-    | Start
-    | Stop
-    | Reset
-
   type FakeTimeoutService() = 
     let evt = Event<_>()
 
-    let recordedCommands = new ResizeArray<RecordedTimeoutServiceCommand>() 
+    let recordedCommands = new ResizeArray<TimeoutServiceOperations>() 
 
     member x.TriggerTimeout() = evt.Trigger()
     member x.RecordedValues = recordedCommands

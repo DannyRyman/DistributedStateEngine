@@ -22,13 +22,13 @@ type RaftServerTests() =
     context.PreviousLogIndexes |> should equal None
 
   [<Fact>]
-  let ``should record operations`` () =
-    fakeElectionTimeoutService.RecordedValues.Count |> should equal 0
-    (fakeElectionTimeoutService :> ITimeoutService).Start()
-    (fakeElectionTimeoutService :> ITimeoutService).Stop()
-    fakeElectionTimeoutService.RecordedValues.Count |> should equal 2
+  let ``on server start, must start the election timeout service`` () =
+    server.Start()
+    fakeElectionTimeoutService.RecordedValues.Count |> should equal 1
     fakeElectionTimeoutService.RecordedValues.Item 0 |> should equal Start
-    fakeElectionTimeoutService.RecordedValues.Item 1 |> should equal Stop
+    
+
+    
 
 
     
