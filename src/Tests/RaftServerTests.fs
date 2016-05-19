@@ -11,9 +11,9 @@ open Tests.Fakes
 type RaftServerTests(testOutputHelper) =          
   let fakeElectionTimeoutService = new FakeTimeoutService()
   let fakeHeartbeatTimeoutService = new FakeTimeoutService()
-  let nullWorkflow (initialContext:Context, _) = async {      
-      return initialContext
-    }
+  let nullWorkflow (initialContext:Context, _) = 
+      initialContext
+    
   let loggerConfig = createTestLoggerConfig testOutputHelper 
   let server = new Server(fakeElectionTimeoutService, fakeHeartbeatTimeoutService, nullWorkflow, loggerConfig)
 

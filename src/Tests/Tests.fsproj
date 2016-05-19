@@ -55,6 +55,7 @@
     <Compile Include="Logging.fs" />
     <Compile Include="RaftServerTests.fs" />
     <Compile Include="RaftTimeoutTests.fs" />
+    <Compile Include="RaftWorkflowTests.fs" />
     <None Include="Script.fsx" />
     <Content Include="packages.config" />
     <Content Include="App.config" />

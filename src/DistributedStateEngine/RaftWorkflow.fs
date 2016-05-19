@@ -17,16 +17,6 @@
       CurrentTerm : uint64
       PreviousLogIndexes : Option<LogIndexes>
     }
-    with
-      static member Init () =
-        // todo load from persistence
-        { 
-          State = Follower
-          CurrentTerm = 0UL
-          PreviousLogIndexes = None
-        }         
-      member this.ChangeState state = 
-        {this with State = state}
 
   module Workflow =
     open StateTransitions
@@ -34,11 +24,10 @@
     type RaftEvent =
       | ElectionTimeout    
         
-    let processRaftEvent (initialContext:Context,raftEvent:RaftEvent) = async {
+    let processRaftEvent (initialContext:Context,raftEvent:RaftEvent) = 
       match raftEvent with
       | ElectionTimeout -> 
-        let newState = initialContext.ChangeState (Candidate)        
-        return newState
-    } 
+        { initialContext with State = Follower }
+    
   
       

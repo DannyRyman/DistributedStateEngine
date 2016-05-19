@@ -18,11 +18,11 @@ type RaftTimeoutTests(testOutputHelper) =
   let ``on election timeout, must pass an election timeout to the workflow`` () =    
     let latch = new AutoResetEvent(false)
     let mutable raftEvent:Option<RaftEvent> = None
-    let fakeWorkflow (initialContext:Context, e) = async {
+    let fakeWorkflow (initialContext:Context, e) = 
       raftEvent <- Some e
       latch.Set() |> ignore
-      return initialContext
-    } 
+      initialContext
+     
     let server = new Server(fakeElectionTimeoutService, fakeHeartbeatTimeoutService, fakeWorkflow, loggerConfig)
     server.Start() |> Async.RunSynchronously    
     fakeElectionTimeoutService.TriggerTimeout()
