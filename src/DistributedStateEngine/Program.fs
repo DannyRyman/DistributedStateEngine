@@ -9,6 +9,7 @@ open Configuration
 open RaftImplementation
 open RaftState
 open RaftTypes
+open Serilog
 open Raft
 open TimerLibrary
 
@@ -16,13 +17,15 @@ open TimerLibrary
 let main argv = 
   printfn "libzmq version: %A" ZMQ.version
   let tokenSource = new CancellationTokenSource()
-  let token = tokenSource.Token
-  
-  let electionTimeoutService = new TimeoutService({MinimumTimeout = 200; MaximumTimeout = 300})
-  
+  let token = tokenSource.Token  
+  let electionTimeoutService = new TimeoutService({MinimumTimeout = 200; MaximumTimeout = 300})  
   let heartbeatTimeoutService = new TimeoutService({MinimumTimeout = 100; MaximumTimeout = 100})
-  let server = new Server(electionTimeoutService, heartbeatTimeoutService)
-  server.Start()
+
+  let config = new LoggerConfiguration()
+  config.WriteTo.ColoredConsole() |> ignore
+
+  let server = new Server(electionTimeoutService, heartbeatTimeoutService, Workflow.processRaftEvent, config)
+  server.Start() |> Async.RunSynchronously
    
   (*
   Async.Start ( 

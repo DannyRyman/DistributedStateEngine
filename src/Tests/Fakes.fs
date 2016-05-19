@@ -1,7 +1,6 @@
 ﻿namespace Tests
 
-
-module RaftFakes =
+module Fakes =
   open TimerLibrary
 
   type FakeTimeoutService() = 

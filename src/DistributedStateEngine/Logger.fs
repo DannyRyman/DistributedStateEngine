@@ -8,3 +8,4 @@ let private getLoggerConfiguration() =
   config
 
 let log = (getLoggerConfiguration()).CreateLogger()
+

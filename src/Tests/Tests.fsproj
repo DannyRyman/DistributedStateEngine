@@ -51,8 +51,10 @@
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
-    <Compile Include="Support.fs" />
+    <Compile Include="Fakes.fs" />
+    <Compile Include="Logging.fs" />
     <Compile Include="RaftServerTests.fs" />
+    <Compile Include="RaftTimeoutTests.fs" />
     <None Include="Script.fsx" />
     <Content Include="packages.config" />
     <Content Include="App.config" />
@@ -74,6 +76,14 @@
     <Reference Include="mscorlib" />
     <Reference Include="NHamcrest">
       <HintPath>..\packages\FsUnit.xUnit.1.4.1.0\lib\net45\NHamcrest.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Serilog">
+      <HintPath>..\packages\Serilog.1.5.14\lib\net45\Serilog.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Serilog.FullNetFx">
+      <HintPath>..\packages\Serilog.1.5.14\lib\net45\Serilog.FullNetFx.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />

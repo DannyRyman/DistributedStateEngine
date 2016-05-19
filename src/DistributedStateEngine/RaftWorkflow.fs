@@ -12,30 +12,33 @@
       Term : uint64
     }
     
-    type Context = private {
-      state : State
-      currentTerm : uint64
-      previousLogIndexes : Option<LogIndexes>
+    type Context = {
+      State : State
+      CurrentTerm : uint64
+      PreviousLogIndexes : Option<LogIndexes>
     }
     with
       static member Init () =
         // todo load from persistence
         { 
-          state = Follower
-          currentTerm = 0UL
-          previousLogIndexes = None
-        }   
-
-      member this.State = this.state
-      member this.CurrentTerm = this.currentTerm
-      member this.PreviousLogIndexes = this.previousLogIndexes   
+          State = Follower
+          CurrentTerm = 0UL
+          PreviousLogIndexes = None
+        }         
+      member this.ChangeState state = 
+        {this with State = state}
 
   module Workflow =
     open StateTransitions
-            
-    let processRaftEvent initialContext raftEvent = async {
-      printf "todo - implement"
-      initialContext
+    
+    type RaftEvent =
+      | ElectionTimeout    
+        
+    let processRaftEvent (initialContext:Context,raftEvent:RaftEvent) = async {
+      match raftEvent with
+      | ElectionTimeout -> 
+        let newState = initialContext.ChangeState (Candidate)        
+        return newState
     } 
   
       
