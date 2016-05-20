@@ -1,9 +1,7 @@
 ﻿namespace Tests
 
-open Raft.StateTransitions
 open Xunit
 open System.Threading
-open Raft.Workflow
 open Raft
 open FsUnit.Xunit
 open Tests.Logging
@@ -22,10 +20,18 @@ type RaftTimeoutTests(testOutputHelper) =
       raftEvent <- Some e
       latch.Set() |> ignore
       initialContext
-     
+         
     let server = new Server(fakeElectionTimeoutService, fakeHeartbeatTimeoutService, fakeWorkflow, loggerConfig)
-    server.Start() |> Async.RunSynchronously    
+    let serverStartedLatch = new AutoResetEvent(false)
+    server.ServerEvent.Add(fun x -> 
+      match x with
+      | ServerStarted -> serverStartedLatch.Set() |> ignore
+    )
+    let cancellationTokenSource = new CancellationTokenSource()
+    server.Start cancellationTokenSource.Token |> Async.Start
+    serverStartedLatch.WaitOne() |> ignore
     fakeElectionTimeoutService.TriggerTimeout()
     let wasTripped = latch.WaitOne(1000)
+    cancellationTokenSource.Cancel()
     wasTripped |> should equal true
     raftEvent |> should equal (Some ElectionTimeout)

@@ -79,7 +79,6 @@
     <Compile Include="RaftState.fs" />
     <Compile Include="RaftImplementation.fs" />
     <Compile Include="RaftWorkflow.fs" />
-    <Compile Include="RaftServer.fs" />
     <Compile Include="Program.fs" />
     <Content Include="App.config" />
   </ItemGroup>

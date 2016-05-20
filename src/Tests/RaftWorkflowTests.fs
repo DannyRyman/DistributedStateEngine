@@ -2,8 +2,7 @@
 
 open Logging
 open Xunit
-open Raft.Workflow
-open Raft.StateTransitions
+open Raft
 open FsUnit.Xunit
 
 type RaftWorkflowTests(testOutputHelper) =

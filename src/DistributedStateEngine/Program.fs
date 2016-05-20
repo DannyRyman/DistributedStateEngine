@@ -24,8 +24,11 @@ let main argv =
   let config = new LoggerConfiguration()
   config.WriteTo.ColoredConsole() |> ignore
 
-  let server = new Server(electionTimeoutService, heartbeatTimeoutService, Workflow.processRaftEvent, config)
-  server.Start() |> Async.RunSynchronously
+  let server = new Server(electionTimeoutService, heartbeatTimeoutService, processRaftEvent, config)
+  
+  Async.Start ( 
+    server.Start token
+  )
    
   (*
   Async.Start ( 
