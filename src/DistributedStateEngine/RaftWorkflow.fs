@@ -32,17 +32,31 @@ type ServerEvents =
 //---------------------------------------------------------------------------
 // Main raft workflow
 //---------------------------------------------------------------------------
-let processRaftEvent (initialContext:Context,raftEvent:RaftEvent) = 
-  match raftEvent with
-  | ElectionTimeout -> 
-    { initialContext with State = Candidate }
+type IWorkflow = 
+  abstract member ProcessRaftEvent : (Context*RaftEvent)->Context
+
+type Workflow(electionTimeoutService : ITimeoutService) =
+  let startElection (initialContext:Context) =
+    electionTimeoutService.Reset()
+    initialContext  
+
+  let processElectionTimeout (initialContext:Context) =
+    match initialContext.State with
+    | Follower | Candidate -> startElection <| initialContext
+    | Leader -> failwith "election timeout should not be raised when in the leader state"  
+
+  interface IWorkflow with
+    member this.ProcessRaftEvent x = 
+      let initialContext, raftEvent = x
+      match raftEvent with
+      | ElectionTimeout -> processElectionTimeout <| initialContext    
     
 //---------------------------------------------------------------------------
 // Raft server
 //---------------------------------------------------------------------------
 type Server(electionTimeoutService : ITimeoutService, 
               heartbeatTimeoutService : ITimeoutService,
-              raftWorkflow:(Context*RaftEvent)->Context,
+              raftWorkflow:IWorkflow,
               loggerConfig:LoggerConfiguration) =         
   do
     Log.Logger <- loggerConfig.CreateLogger()
@@ -55,7 +69,7 @@ type Server(electionTimeoutService : ITimeoutService,
     async {
       let! event = mailbox.Receive()
       Log.Information("Received event {event}", event)        
-      let newContext = raftWorkflow (context.Value, event)
+      let newContext = raftWorkflow.ProcessRaftEvent (context.Value, event)
       Log.Information("Finished processing {event}; Original context {context}; New Context {newContext}", sprintf "%A" event, sprintf "%A" context.Value, sprintf "%A" newContext)
       context <- Some newContext
     }      

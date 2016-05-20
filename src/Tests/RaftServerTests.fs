@@ -11,8 +11,7 @@ open System.Threading
 type RaftServerTests(testOutputHelper) =          
   let fakeElectionTimeoutService = new FakeTimeoutService()
   let fakeHeartbeatTimeoutService = new FakeTimeoutService()
-  let nullWorkflow (initialContext:Context, _) = 
-      initialContext
+  let nullWorkflow = new NullWorkflow()
     
   let loggerConfig = createTestLoggerConfig testOutputHelper 
   

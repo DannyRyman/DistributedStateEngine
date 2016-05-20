@@ -1,5 +1,7 @@
 ﻿namespace Tests
 
+open Raft
+
 module Fakes =
   open TimerLibrary
 
@@ -17,3 +19,8 @@ module Fakes =
       member x.Reset() = recordedCommands.Add(Reset)
       member x.TimedOut = evt.Publish :> _
 
+type NullWorkflow() =
+  interface IWorkflow with 
+    member this.ProcessRaftEvent x = 
+      let initialContext, raftEvent = x
+      initialContext
