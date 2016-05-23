@@ -20,7 +20,9 @@ let main argv =
   let token = tokenSource.Token  
   let electionTimeoutService = new TimeoutService({MinimumTimeout = 200; MaximumTimeout = 300})  
   let heartbeatTimeoutService = new TimeoutService({MinimumTimeout = 100; MaximumTimeout = 100})
-  let workflow = new Workflow(electionTimeoutService)
+  let communication = new Communication()
+  let dataAccess = new DataAccess()
+  let workflow = new Workflow(electionTimeoutService, communication, dataAccess)
 
   let config = new LoggerConfiguration()
   config.WriteTo.ColoredConsole() |> ignore

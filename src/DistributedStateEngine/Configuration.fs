@@ -1,4 +1,4 @@
-﻿module internal Configuration
+﻿module Configuration
 
 open FSharp.Configuration
 
