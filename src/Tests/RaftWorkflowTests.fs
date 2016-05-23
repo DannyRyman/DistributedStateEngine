@@ -41,7 +41,29 @@ type RaftWorkflowTests(testOutputHelper) =
     let onlyVote = candidateContext.CountedVotes.Single()
     onlyVote.Key |> should equal (config.ThisNode.Port.ToString())
     onlyVote.Value |> should equal true
-  
+
+  [<Fact>]  
+  let ``election timeout must clear any previous votes`` () =
+    let workflow = new Workflow(fakeElectionTimeout, communication, dataAccess) :> IWorkflow
+    let existingVotes = 
+      Map<string,bool> (
+        [
+          ("sampleVote1", true)
+          ("sampleVote2", true)
+        ]
+      )
+    let initialContext = Candidate {CurrentTerm=0UL; PreviousLogIndexes=None; CountedVotes=existingVotes }
+    let newContext = workflow.ProcessRaftEvent(initialContext, ElectionTimeout)
+    let candidateContext = 
+      match newContext with 
+      | Candidate c -> c
+      | Follower _ | Leader _ -> failwith "Unexpected state"      
+
+    // Assert that only the vote for self is registered
+    let onlyVote = candidateContext.CountedVotes.Single()
+    onlyVote.Key |> should equal (config.ThisNode.Port.ToString())
+    onlyVote.Value |> should equal true
+
   // Todo start as a candidate
   // Todo clear any existing votes
   // Todo previous log entries <> none
