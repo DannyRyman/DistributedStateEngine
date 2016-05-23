@@ -16,11 +16,10 @@ type RaftWorkflowTests(testOutputHelper) =
   let communication = Mock.Of<ICommunication>()
   let dataAccess = Mock.Of<IDataAccess>()
 
-  [<Theory>]
-  [<MemberData("FollowerAndCandidateState")>]
-  let ``election timeout must start an election for followers and candidates and end in a candidate state`` (initialState:State) =
+  [<Fact>]  
+  let ``election timeout must start an election for followers and end in a candidate state`` () =
     let workflow = new Workflow(fakeElectionTimeout, communication, dataAccess) :> IWorkflow
-    let initialContext = {State=initialState; CurrentTerm=0UL; PreviousLogIndexes=None; CountedVotes = Map.empty}
+    let initialContext = Follower {CurrentTerm=0UL; PreviousLogIndexes=None;}
     let newContext = workflow.ProcessRaftEvent(initialContext, ElectionTimeout)
     // Assert that the election timeout countdown is reset
     fakeElectionTimeout.RecordedValues.Single() |> should equal Reset
@@ -30,22 +29,21 @@ type RaftWorkflowTests(testOutputHelper) =
     let requestVote = { Term = 1UL; CandidateId = config.ThisNode.Port.ToString(); PreviousLogIndexes = None } 
     Mock.Verify(<@ communication.Broadcast(RpcRequest (RequestVote requestVote)) @>, once)   
     // Assert transition to candidate state
-    newContext.State |> should equal Candidate
+    let candidateContext = 
+      match newContext with 
+      | Candidate c -> c
+      | Follower _ | Leader _ -> failwith "Unexpected state"      
     // Assert the current term has been incremented
-    newContext.CurrentTerm |> should equal 1UL
+    candidateContext.CurrentTerm |> should equal 1UL
     // Assert the previous log indexes have not changed
-    newContext.PreviousLogIndexes |> should equal None
+    candidateContext.PreviousLogIndexes |> should equal None
     // Assert voted for self
-    let onlyVote = newContext.CountedVotes.Single()
+    let onlyVote = candidateContext.CountedVotes.Single()
     onlyVote.Key |> should equal (config.ThisNode.Port.ToString())
     onlyVote.Value |> should equal true
   
+  // Todo start as a candidate
   // Todo clear any existing votes
   // Todo previous log entries <> none
   // Todo start term not equal to 0
   
-  static member FollowerAndCandidateState : obj array seq = 
-    seq {
-      yield [|Follower|]
-      yield [|Candidate|]
-    }

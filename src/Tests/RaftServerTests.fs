@@ -29,10 +29,13 @@ type RaftServerTests(testOutputHelper) =
 
   [<Fact>]
   let ``when server started, context must be in expected state (no previous persisted state)`` () =
-    let context = createServerAndStart().GetContext()
-    context.State |> should equal Follower
-    context.CurrentTerm |> should equal 0UL
-    context.PreviousLogIndexes |> should equal None
+    let state = createServerAndStart().GetState()
+    let followerState = 
+      match state with 
+      | Follower x -> x
+      | Candidate _ | Leader -> failwith "Unexpected state"
+    followerState.CurrentTerm |> should equal 0UL
+    followerState.PreviousLogIndexes |> should equal None
 
   [<Fact>]
   let ``when server started, must start the election timeout service`` () =

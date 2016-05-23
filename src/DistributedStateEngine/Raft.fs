@@ -8,24 +8,26 @@ open Configuration
 //---------------------------------------------------------------------------
 // Types
 //---------------------------------------------------------------------------
-
-type State = 
-  | Follower
-  | Candidate
-  | Leader
-
 type LogIndexes = {
   Index : uint64
   Term : uint64
 }
-    
-type Context = {
-  State : State
+
+type FollowerContext = {
   CurrentTerm : uint64
   PreviousLogIndexes : Option<LogIndexes>
-  // Todo this only relates to the candidate state. Remodel to make this unrepresentable in the other states.
-  CountedVotes : Map<string,bool>
 }
+
+type CandidateContext = {
+  CurrentTerm : uint64
+  PreviousLogIndexes : Option<LogIndexes>
+  CountedVotes : Map<string,bool>
+} 
+
+type State = 
+  | Follower of FollowerContext
+  | Candidate of CandidateContext
+  | Leader    
 
 type RaftEvent =
   | ElectionTimeout    
@@ -95,28 +97,29 @@ type DataAccess() =
 // Main raft workflow
 //---------------------------------------------------------------------------
 type IWorkflow = 
-  abstract member ProcessRaftEvent : (Context*RaftEvent)->Context
+  abstract member ProcessRaftEvent : (State*RaftEvent)->State
 
 type Workflow(electionTimeoutService : ITimeoutService,
               communication: ICommunication,
               dataAccess: IDataAccess) =
 
-  let startElection (initialContext:Context) =
+  let startElection (initialState:State) (initialTerm:UInt64) =
     electionTimeoutService.Reset()
-    let newTerm = initialContext.CurrentTerm + 1UL    
+    let newTerm = initialTerm + 1UL    
     dataAccess.UpdateTerm(newTerm)
     // todo remove hard coded previous log entry
     let requestVote = { Term = newTerm; CandidateId = config.ThisNode.Port.ToString(); PreviousLogIndexes = None } 
     communication.Broadcast(RpcRequest (RequestVote requestVote))
-    {initialContext with 
-      State=Candidate 
+    Candidate {
       CurrentTerm=newTerm
-      CountedVotes=Map<string,bool>([(config.ThisNode.Port.ToString(), true)]) 
-      }
+      PreviousLogIndexes=None
+      CountedVotes=Map<string,bool>([(config.ThisNode.Port.ToString(), true)])  
+    }
 
-  let processElectionTimeout (initialContext:Context) =
-    match initialContext.State with
-    | Follower | Candidate -> startElection <| initialContext
+  let processElectionTimeout (initialState:State) =
+    match initialState with
+    | Follower f -> startElection (initialState) (f.CurrentTerm)
+    | Candidate c -> startElection (initialState) (c.CurrentTerm)
     | Leader -> failwith "election timeout should not be raised when in the leader state"  
 
   interface IWorkflow with
@@ -137,27 +140,30 @@ type Server(electionTimeoutService : ITimeoutService,
 
   let serverEvent = new Event<ServerEvents>()
 
-  let mutable context:Option<Context> = None
+  let mutable state:Option<State> = None
 
   let workflowProcessor = MailboxProcessor<RaftEvent>.Start(fun mailbox -> 
     async {
       let! event = mailbox.Receive()
       Log.Information("Received event {event}", event)        
-      let newContext = raftWorkflow.ProcessRaftEvent (context.Value, event)
-      Log.Information("Finished processing {event}; Original context {context}; New Context {newContext}", sprintf "%A" event, sprintf "%A" context.Value, sprintf "%A" newContext)
-      context <- Some newContext
+      let newState = raftWorkflow.ProcessRaftEvent (state.Value, event)
+      Log.Information("Finished processing {event}; Original context {context}; New Context {newContext}", sprintf "%A" event, sprintf "%A" state.Value, sprintf "%A" newState)
+      state <- Some newState
     }      
   )
 
-  let initializeContext () =
+  let initializeState () =
     // todo load from persistance if necessary
-    Some {State=Follower;CurrentTerm=0UL;PreviousLogIndexes=None;CountedVotes=Map.empty}
+    Some (Follower {
+      CurrentTerm=0UL
+      PreviousLogIndexes=None}
+      )
 
   member this.ServerEvent = serverEvent.Publish
 
   member this.Start (cancellationToken : CancellationToken) = 
     async {
-      context <- initializeContext ()
+      state <- initializeState ()
       workflowProcessor.Error.Add(fun ex -> Log.Error("Error {ex}", ex))
       use electionTimeoutServiceSubscription = electionTimeoutService.TimedOut.Subscribe(fun () -> workflowProcessor.Post(ElectionTimeout))      
       electionTimeoutService.Start()
@@ -165,8 +171,8 @@ type Server(electionTimeoutService : ITimeoutService,
       cancellationToken.WaitHandle.WaitOne() |> ignore    
     }        
 
-  member this.GetContext () =
-    match context with
+  member this.GetState () =
+    match state with
     | Some c -> c
     | None -> failwith "Cannot get context as server is not started"    
       
