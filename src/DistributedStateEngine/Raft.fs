@@ -103,23 +103,23 @@ type Workflow(electionTimeoutService : ITimeoutService,
               communication: ICommunication,
               dataAccess: IDataAccess) =
 
-  let startElection (initialState:State) (initialTerm:UInt64) =
+  let startElection initialTerm logIndexes =
     electionTimeoutService.Reset()
     let newTerm = initialTerm + 1UL    
     dataAccess.UpdateTerm(newTerm)
     // todo remove hard coded previous log entry
-    let requestVote = { Term = newTerm; CandidateId = config.ThisNode.Port.ToString(); PreviousLogIndexes = None } 
+    let requestVote = { Term = newTerm; CandidateId = config.ThisNode.Port.ToString(); PreviousLogIndexes = logIndexes } 
     communication.Broadcast(RpcRequest (RequestVote requestVote))
     Candidate {
       CurrentTerm=newTerm
-      PreviousLogIndexes=None
+      PreviousLogIndexes=logIndexes
       CountedVotes=Map<string,bool>([(config.ThisNode.Port.ToString(), true)])  
     }
 
   let processElectionTimeout (initialState:State) =
     match initialState with
-    | Follower f -> startElection (initialState) (f.CurrentTerm)
-    | Candidate c -> startElection (initialState) (c.CurrentTerm)
+    | Follower f -> startElection (f.CurrentTerm) (f.PreviousLogIndexes)
+    | Candidate c -> startElection (c.CurrentTerm) (c.PreviousLogIndexes)
     | Leader -> failwith "election timeout should not be raised when in the leader state"  
 
   interface IWorkflow with

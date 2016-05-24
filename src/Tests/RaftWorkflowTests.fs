@@ -10,41 +10,44 @@ open TimerLibrary
 open Configuration
 open Foq
 
-type RaftWorkflowTests(testOutputHelper) =
+type WhenRaftElectionTimeoutOccurs(testOutputHelper) =
   let loggerConfig = createTestLoggerConfig testOutputHelper 
   let fakeElectionTimeout = new FakeTimeoutService()
   let communication = Mock.Of<ICommunication>()
   let dataAccess = Mock.Of<IDataAccess>()
 
+  let doElectionTimeoutAndReturnCandidateState initialState =
+    let workflow = new Workflow(fakeElectionTimeout, communication, dataAccess) :> IWorkflow    
+    let newState = workflow.ProcessRaftEvent(initialState, ElectionTimeout)
+    let candidateState = 
+      match newState with 
+      | Candidate c -> c
+      | Follower _ | Leader _ -> failwith "Unexpected state"
+    candidateState
+
   [<Fact>]  
-  let ``election timeout must start an election for followers and end in a candidate state`` () =
-    let workflow = new Workflow(fakeElectionTimeout, communication, dataAccess) :> IWorkflow
-    let initialContext = Follower {CurrentTerm=0UL; PreviousLogIndexes=None;}
-    let newContext = workflow.ProcessRaftEvent(initialContext, ElectionTimeout)
+  let ``must start an election for followers and end in a candidate state`` () =       
+    let newState = doElectionTimeoutAndReturnCandidateState(Follower {CurrentTerm=0UL; PreviousLogIndexes=None;})
+
     // Assert that the election timeout countdown is reset
     fakeElectionTimeout.RecordedValues.Single() |> should equal Reset
     // Assert the new term is persisted
     Mock.Verify(<@ dataAccess.UpdateTerm(1UL) @>, once)
     // Assert the request vote rpc call is broadcast with the expected values
     let requestVote = { Term = 1UL; CandidateId = config.ThisNode.Port.ToString(); PreviousLogIndexes = None } 
-    Mock.Verify(<@ communication.Broadcast(RpcRequest (RequestVote requestVote)) @>, once)   
-    // Assert transition to candidate state
-    let candidateContext = 
-      match newContext with 
-      | Candidate c -> c
-      | Follower _ | Leader _ -> failwith "Unexpected state"      
+    Mock.Verify(<@ communication.Broadcast(RpcRequest (RequestVote requestVote)) @>, once)    
     // Assert the current term has been incremented
-    candidateContext.CurrentTerm |> should equal 1UL
+    newState.CurrentTerm |> should equal 1UL
     // Assert the previous log indexes have not changed
-    candidateContext.PreviousLogIndexes |> should equal None
+    newState.PreviousLogIndexes |> should equal None
     // Assert voted for self
-    let onlyVote = candidateContext.CountedVotes.Single()
+    let onlyVote = newState.CountedVotes.Single()
     onlyVote.Key |> should equal (config.ThisNode.Port.ToString())
     onlyVote.Value |> should equal true
 
   [<Fact>]  
-  let ``election timeout must clear any previous votes`` () =
-    let workflow = new Workflow(fakeElectionTimeout, communication, dataAccess) :> IWorkflow
+  let ``must clear any previous votes`` () =
+    
     let existingVotes = 
       Map<string,bool> (
         [
@@ -53,19 +56,22 @@ type RaftWorkflowTests(testOutputHelper) =
         ]
       )
     let initialContext = Candidate {CurrentTerm=0UL; PreviousLogIndexes=None; CountedVotes=existingVotes }
-    let newContext = workflow.ProcessRaftEvent(initialContext, ElectionTimeout)
-    let candidateContext = 
-      match newContext with 
-      | Candidate c -> c
-      | Follower _ | Leader _ -> failwith "Unexpected state"      
-
+    let newState = doElectionTimeoutAndReturnCandidateState (initialContext)
     // Assert that only the vote for self is registered
-    let onlyVote = candidateContext.CountedVotes.Single()
+    let onlyVote = newState.CountedVotes.Single()
     onlyVote.Key |> should equal (config.ThisNode.Port.ToString())
     onlyVote.Value |> should equal true
 
-  // Todo start as a candidate
-  // Todo clear any existing votes
-  // Todo previous log entries <> none
-  // Todo start term not equal to 0
+  [<Fact>]
+  let ``example where the term is greater than zero and the log indexes are set`` () =    
+    let previousLogIndexes = Some {Term=10UL;Index=5UL}
+    let newState = doElectionTimeoutAndReturnCandidateState (Follower {CurrentTerm=11UL; PreviousLogIndexes=previousLogIndexes; })
+    // The previous log indexes should be sent with the request vote    
+    let requestVote = { Term = 12UL; CandidateId = config.ThisNode.Port.ToString(); PreviousLogIndexes = previousLogIndexes } 
+    Mock.Verify(<@ communication.Broadcast(RpcRequest (RequestVote requestVote)) @>, once)   
+    // The previous log indexes must remain unchanged
+    newState.PreviousLogIndexes.IsSome |> should equal true
+    newState.PreviousLogIndexes.Value.Index |> should equal 5UL
+    newState.PreviousLogIndexes.Value.Term |> should equal 10UL
+    newState.CurrentTerm |> should equal 12UL
   
